@@ -1,0 +1,517 @@
+import React, { useState } from 'react';
+import {
+  Mail,
+  RefreshCw,
+  Sparkles,
+  ShieldAlert,
+  Bell,
+  Sun,
+  Moon,
+  LogOut,
+  Send,
+  Sliders,
+  CheckCircle2,
+  AlertTriangle,
+  Zap,
+} from 'lucide-react';
+import { googleSignIn, logout } from '../services/auth.js';
+import { api } from '../services/api.js';
+import { ReplyMode } from '../../server/types.js';
+
+interface HeaderProps {
+  user: any;
+  token: string | null;
+  replyMode: ReplyMode;
+  onModeChange: (mode: ReplyMode) => void;
+  onRefresh: () => void;
+  onSimulate: (type: 'meeting' | 'support' | 'security' | 'sales') => void;
+  onSignInSuccess?: (user: any, token: string) => void;
+  isSyncing: boolean;
+  theme: 'dark' | 'light';
+  onToggleTheme: () => void;
+  unreadApprovalsCount: number;
+}
+
+export const Header: React.FC<HeaderProps> = ({
+  user,
+  token,
+  replyMode,
+  onModeChange,
+  onRefresh,
+  onSimulate,
+  onSignInSuccess,
+  isSyncing,
+  theme,
+  onToggleTheme,
+  unreadApprovalsCount,
+}) => {
+  const [showAutoWarningModal, setShowAutoWarningModal] = useState(false);
+  const [showTroubleshootModal, setShowTroubleshootModal] = useState(false);
+  const [showSimulateMenu, setShowSimulateMenu] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  const handleModeSelect = (newMode: ReplyMode) => {
+    onModeChange(newMode);
+  };
+
+  const confirmAutoMode = () => {
+    onModeChange('automatic');
+    setShowAutoWarningModal(false);
+  };
+
+  const handleSignIn = async () => {
+    setIsLoggingIn(true);
+    setAuthError(null);
+    try {
+      const result = await googleSignIn();
+      if (result) {
+        if (onSignInSuccess) {
+          onSignInSuccess(result.user, result.accessToken);
+        }
+      }
+    } catch (err: any) {
+      console.error('Sign-in failed:', err);
+      setAuthError(err.message || 'Failed to complete Google Sign-in. Please try again.');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    await logout();
+    onRefresh();
+  };
+
+  return (
+    <>
+      <header className="sticky top-0 z-40 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md px-4 sm:px-6 py-3 transition-colors">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+          {/* Zone 1: Brand Wordmark */}
+          <div className="flex items-center gap-2.5">
+            <div className="h-9 w-9 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 flex items-center justify-center shadow-xs shrink-0">
+              <Mail className="h-4.5 w-4.5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-base sm:text-lg font-bold tracking-tight text-slate-900 dark:text-white">
+                  MailPilot<span className="text-emerald-600 dark:text-emerald-400">AI</span>
+                </span>
+                <span className="hidden xl:inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>24/7 Daemon Active</span>
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 hidden sm:block">
+                Autonomous Gmail Auto-Reply & Inbox Automation
+              </p>
+            </div>
+          </div>
+
+          {/* Zone 2: Reply Mode Segmented Control */}
+          <div className="hidden md:flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+            <button
+              onClick={() => handleModeSelect('automatic')}
+              title="Autonomous Mode: Incoming emails are automatically analyzed and answered immediately without asking permission"
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                replyMode === 'automatic'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400'
+              }`}
+            >
+              <Zap className="w-3.5 h-3.5 text-amber-300" />
+              <span>Autonomous (Direct Send)</span>
+            </button>
+            <button
+              onClick={() => handleModeSelect('approval')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                replyMode === 'approval'
+                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <span>Review Queue</span>
+              {unreadApprovalsCount > 0 && (
+                <span className="bg-amber-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold tabular-nums">
+                  {unreadApprovalsCount}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => handleModeSelect('manual')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                replyMode === 'manual'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              Manual
+            </button>
+          </div>
+
+          {/* Right Controls: Sync, Simulate, Notifications, Theme, Account */}
+          <div className="flex items-center gap-2">
+            {/* Sync Gmail */}
+            <button
+              onClick={onRefresh}
+              disabled={isSyncing}
+              title="Sync latest emails from Gmail API"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-750 text-xs font-medium transition shadow-xs disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-indigo-600' : ''}`} />
+              <span className="hidden sm:inline">{isSyncing ? 'Syncing...' : 'Sync Gmail'}</span>
+            </button>
+
+            {/* Simulate Dropdown for testing */}
+            <div className="relative">
+              <button
+                onClick={() => setShowSimulateMenu(!showSimulateMenu)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/70 dark:border-indigo-800 text-xs font-medium hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition"
+              >
+                <Zap className="w-3.5 h-3.5 text-indigo-500" />
+                <span className="hidden sm:inline">Simulate Incoming</span>
+              </button>
+              {showSimulateMenu && (
+                <div
+                  className="absolute right-0 mt-2 w-56 rounded-xl bg-white dark:bg-slate-800 shadow-xl border border-slate-200 dark:border-slate-700 p-1.5 z-50 text-xs"
+                  onClick={() => setShowSimulateMenu(false)}
+                >
+                  <p className="px-3 py-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                    Simulate Live Event
+                  </p>
+                  <button
+                    onClick={() => onSimulate('meeting')}
+                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center justify-between"
+                  >
+                    <span>📅 Meeting Request</span>
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950 px-1.5 py-0.5 rounded">
+                      Safe
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => onSimulate('sales')}
+                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center justify-between"
+                  >
+                    <span>💼 Enterprise Inquiry</span>
+                    <span className="text-[10px] text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950 px-1.5 py-0.5 rounded">
+                      Inquiry
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => onSimulate('security')}
+                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center justify-between"
+                  >
+                    <span>🛡️ Security Alert (Sensitive)</span>
+                    <span className="text-[10px] text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950 px-1.5 py-0.5 rounded">
+                      Blocked
+                    </span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Notification Bell */}
+            <div className="relative">
+              <button
+                onClick={() => setShowNotifications(!showNotifications)}
+                className="p-2 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition relative"
+                aria-label="Notifications"
+              >
+                <Bell className="w-4 h-4" />
+                {unreadApprovalsCount > 0 && (
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-amber-500 rounded-full ring-2 ring-white dark:ring-slate-900" />
+                )}
+              </button>
+              {showNotifications && (
+                <div className="absolute right-0 mt-2 w-72 rounded-xl bg-white dark:bg-slate-800 shadow-xl border border-slate-200 dark:border-slate-700 p-3 z-50">
+                  <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-2 mb-2">
+                    <span className="text-xs font-bold text-slate-900 dark:text-white">
+                      Notifications
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      {unreadApprovalsCount} pending reviews
+                    </span>
+                  </div>
+                  {unreadApprovalsCount > 0 ? (
+                    <div className="space-y-2">
+                      <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200/60 dark:border-amber-900/60 text-xs">
+                        <p className="font-semibold text-amber-800 dark:text-amber-300">
+                          {unreadApprovalsCount} email{unreadApprovalsCount > 1 ? 's' : ''} awaiting approval
+                        </p>
+                        <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
+                          Review generated replies in the Review Queue before sending.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500 dark:text-slate-400 text-center py-4">
+                      All caught up! No pending approvals.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Day / Night Theme Switch */}
+            <div
+              onClick={onToggleTheme}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onToggleTheme();
+                }
+              }}
+              title={`Currently in ${theme === 'dark' ? 'Night (Dark)' : 'Day (Light)'} mode. Click to switch to ${theme === 'dark' ? 'Day (Light)' : 'Night (Dark)'} mode.`}
+              aria-label="Toggle Day and Night mode"
+              className="flex items-center p-0.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-xs font-medium transition cursor-pointer select-none"
+            >
+              <div
+                className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-all ${
+                  theme === 'light'
+                    ? 'bg-white text-amber-600 shadow-xs font-semibold'
+                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
+                }`}
+              >
+                <Sun className={`w-3.5 h-3.5 ${theme === 'light' ? 'text-amber-500 fill-amber-500/20' : 'text-slate-400'}`} />
+                <span className="hidden sm:inline text-[11px]">Day</span>
+              </div>
+              <div
+                className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-all ${
+                  theme === 'dark'
+                    ? 'bg-slate-900 text-indigo-400 shadow-xs font-semibold'
+                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
+                }`}
+              >
+                <Moon className={`w-3.5 h-3.5 ${theme === 'dark' ? 'text-indigo-400 fill-indigo-400/20' : 'text-slate-400'}`} />
+                <span className="hidden sm:inline text-[11px]">Night</span>
+              </div>
+            </div>
+
+            {/* Google Account / Sign In */}
+            {user && token ? (
+              <div className="flex items-center gap-2 pl-2 border-l border-slate-200 dark:border-slate-800">
+                <div className="hidden sm:flex flex-col text-right">
+                  <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 max-w-[140px] truncate">
+                    {user.displayName || user.email}
+                  </span>
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 flex items-center justify-end gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Gmail Connected
+                  </span>
+                </div>
+                {user.photoURL ? (
+                  <img
+                    src={user.photoURL}
+                    alt={user.displayName || 'User'}
+                    className="w-8 h-8 rounded-full border border-slate-200 dark:border-slate-700"
+                  />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 flex items-center justify-center font-bold text-xs">
+                    {(user.email || 'U')[0].toUpperCase()}
+                  </div>
+                )}
+                <button
+                  onClick={handleSignOut}
+                  title="Disconnect Gmail"
+                  className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={handleSignIn}
+                  disabled={isLoggingIn}
+                  className="gsi-material-button text-xs py-1.5 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 font-semibold flex items-center gap-2 shadow-xs transition disabled:opacity-50 cursor-pointer"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 48 48">
+                    <path
+                      fill="#EA4335"
+                      d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"
+                    />
+                    <path
+                      fill="#4285F4"
+                      d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
+                    />
+                  </svg>
+                  <span>{isLoggingIn ? 'Connecting...' : 'Connect Gmail'}</span>
+                </button>
+                <button
+                  onClick={() => setShowTroubleshootModal(true)}
+                  title="Connection Help & Diagnostics"
+                  className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 text-xs transition cursor-pointer"
+                >
+                  Help
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* Sign-In Error Toast / Notification */}
+      {authError && (
+        <div className="bg-rose-50 dark:bg-rose-950/90 border-b border-rose-200 dark:border-rose-800 px-4 py-3 text-xs text-rose-800 dark:text-rose-200">
+          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600 dark:text-rose-400" />
+              <span>
+                <strong>Gmail Connection Notice:</strong> {authError}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => setShowTroubleshootModal(true)}
+                className="px-2.5 py-1 rounded bg-rose-200/80 dark:bg-rose-900 hover:bg-rose-300 dark:hover:bg-rose-800 font-bold text-[11px] transition cursor-pointer"
+              >
+                Troubleshoot Connection
+              </button>
+              <button
+                onClick={handleSignIn}
+                className="px-2.5 py-1 rounded bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] transition cursor-pointer"
+              >
+                Retry
+              </button>
+              <button
+                onClick={() => setAuthError(null)}
+                className="text-rose-500 hover:text-rose-700 font-bold px-1.5 py-0.5 rounded text-base cursor-pointer"
+              >
+                &times;
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Troubleshoot Connection Modal */}
+      {showTroubleshootModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-base">
+                <Mail className="w-5 h-5" />
+                <h3>Gmail Connection Troubleshooting</h3>
+              </div>
+              <button
+                onClick={() => setShowTroubleshootModal(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xl font-bold"
+              >
+                &times;
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300">
+              <div className="p-3 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900">
+                <p className="font-bold text-indigo-900 dark:text-indigo-200 mb-1">
+                  1. OAuth Permissions vs User Login
+                </p>
+                <p className="text-indigo-800 dark:text-indigo-300">
+                  When you clicked "I accept" in AI Studio, you provisioned the Google Workspace OAuth permissions for this app. To access your personal inbox (<code className="font-mono text-indigo-900 dark:text-indigo-100">hack73069@gmail.com</code>), you must click <strong>"Connect Gmail"</strong> in the app to initiate the user-level Google Sign-In.
+                </p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-amber-50/70 dark:bg-amber-950/40 border border-amber-100 dark:border-amber-900">
+                <p className="font-bold text-amber-900 dark:text-amber-200 mb-1">
+                  2. Browser Pop-up Blocker (Most Common Issue)
+                </p>
+                <p className="text-amber-800 dark:text-amber-300">
+                  Because this app runs in a web sandbox, your browser might silently block the Google sign-in window. Look in your browser's address bar (URL bar) for a <strong>pop-up blocked</strong> icon. Select <em>"Always allow pop-ups from this site"</em> and click Connect Gmail again.
+                </p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+                <p className="font-bold text-slate-800 dark:text-slate-200 mb-1">
+                  3. In-Memory Security Architecture
+                </p>
+                <p className="text-slate-600 dark:text-slate-300">
+                  In compliance with Google API security standards, OAuth access tokens are kept safely in memory only and never stored in persistent local storage. If you refresh the page, click "Connect Gmail" once to restore your active token.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                onClick={() => setShowTroubleshootModal(false)}
+                className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold transition"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => {
+                  setShowTroubleshootModal(false);
+                  handleSignIn();
+                }}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-md shadow-indigo-600/30 transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <Mail className="w-4 h-4" />
+                Connect Gmail Now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Automatic Mode Strong Warning Modal */}
+      {showAutoWarningModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl">
+            <div className="flex items-center gap-3 text-amber-600 dark:text-amber-400 mb-3">
+              <div className="p-2 rounded-xl bg-amber-100 dark:bg-amber-950/60">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                Enable Automatic Reply Mode?
+              </h3>
+            </div>
+            <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">
+              In <strong>Automatic Mode</strong>, MailPilot AI will autonomously compose and dispatch
+              live emails through your connected Gmail account without human review whenever confidence
+              is &ge; 90% and no security gates are triggered.
+            </p>
+            <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3.5 border border-slate-200 dark:border-slate-700 mb-5 space-y-2 text-xs">
+              <div className="flex items-start gap-2 text-emerald-700 dark:text-emerald-400">
+                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>Safeguards active: Password resets, invoices, legal notices, and sensitive data are strictly blocked.</span>
+              </div>
+              <div className="flex items-start gap-2 text-emerald-700 dark:text-emerald-400">
+                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>Double validation: Output is audited for factual grounding before transmission.</span>
+              </div>
+              <div className="flex items-start gap-2 text-amber-700 dark:text-amber-400">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>You can switch back to Manual or Approval Queue mode at any time.</span>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3">
+              <button
+                onClick={() => setShowAutoWarningModal(false)}
+                className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-sm font-medium transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmAutoMode}
+                className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold shadow-md shadow-amber-600/30 transition flex items-center gap-1.5"
+              >
+                <Zap className="w-4 h-4" />
+                I Understand, Enable Automatic Mode
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};

@@ -1,0 +1,6 @@
+{
+  "name": "MailPilot AI",
+  "description": "Production-ready AI-powered Gmail auto-reply and inbox management service.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
