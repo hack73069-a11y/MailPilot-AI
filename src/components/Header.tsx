@@ -155,8 +155,14 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           {/* Zone 1: Brand Wordmark */}
           <div className="flex items-center gap-2.5">
-            <div className="h-9 w-9 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 flex items-center justify-center shadow-xs shrink-0">
-              <Mail className="h-4.5 w-4.5" />
+            <div className="relative h-10 w-10 rounded-xl overflow-hidden shadow-sm shadow-emerald-500/20 ring-1 ring-slate-200 dark:ring-slate-800 bg-slate-900 flex items-center justify-center shrink-0 group transition-transform duration-200 hover:scale-105">
+              <img
+                src="/mailpilot-logo.svg"
+                alt="MailPilot AI Logo"
+                referrerPolicy="no-referrer"
+                className="w-full h-full object-cover select-none transition-transform duration-300 group-hover:scale-110"
+              />
+              <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-white dark:border-slate-900 rounded-full" />
             </div>
             <div>
               <div className="flex items-center gap-2">

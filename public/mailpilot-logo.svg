@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b0f19" />
+      <stop offset="50%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#064e3b" />
+    </linearGradient>
+
+    <!-- Outer Ambient Glow -->
+    <radialGradient id="ambientGlow" cx="50%" cy="45%" r="60%">
+      <stop offset="0%" stop-color="#10b981" stop-opacity="0.35" />
+      <stop offset="50%" stop-color="#06b6d4" stop-opacity="0.15" />
+      <stop offset="100%" stop-color="#0f172a" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Wing Gradients -->
+    <linearGradient id="leftWing" x1="20%" y1="10%" x2="80%" y2="90%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="50%" stop-color="#0ea5e9" />
+      <stop offset="100%" stop-color="#1e40af" />
+    </linearGradient>
+
+    <linearGradient id="rightWing" x1="20%" y1="10%" x2="80%" y2="90%">
+      <stop offset="0%" stop-color="#34d399" />
+      <stop offset="50%" stop-color="#10b981" />
+      <stop offset="100%" stop-color="#047857" />
+    </linearGradient>
+
+    <linearGradient id="centerFuselage" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="35%" stop-color="#a7f3d0" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+
+    <linearGradient id="bottomFold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f766e" />
+      <stop offset="100%" stop-color="#042f2e" />
+    </linearGradient>
+
+    <!-- Glass Specular Highlight -->
+    <linearGradient id="specularGleam" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.45" />
+      <stop offset="30%" stop-color="#ffffff" stop-opacity="0.1" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
+    </linearGradient>
+
+    <!-- Jet Trail Glow -->
+    <linearGradient id="jetTrail" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#34d399" stop-opacity="0.8" />
+      <stop offset="60%" stop-color="#06b6d4" stop-opacity="0.3" />
+      <stop offset="100%" stop-color="#0284c7" stop-opacity="0" />
+    </linearGradient>
+
+    <!-- Drop Shadows -->
+    <filter id="shadowFilter" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000000" flood-opacity="0.6" />
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#10b981" flood-opacity="0.3" />
+    </filter>
+
+    <filter id="glowFilter" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Background Canvas with Squircle Clip -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" />
+  <rect width="512" height="512" rx="112" fill="url(#ambientGlow)" />
+  
+  <!-- Subtle Grid Orbit Pattern -->
+  <circle cx="256" cy="256" r="190" fill="none" stroke="#38bdf8" stroke-width="1.5" stroke-opacity="0.12" stroke-dasharray="8 8" />
+  <circle cx="256" cy="256" r="135" fill="none" stroke="#34d399" stroke-width="1.5" stroke-opacity="0.18" />
+
+  <!-- Jet Exhaust / AI Data Trails -->
+  <path d="M 236 330 L 256 420 L 276 330 Z" fill="url(#jetTrail)" filter="url(#glowFilter)" />
+  
+  <g filter="url(#shadowFilter)">
+    <!-- Mail Envelope Background Silhouette / Flap -->
+    <path d="M 120 220 L 256 315 L 392 220 L 392 345 C 392 356 383 365 372 365 L 140 365 C 129 365 120 356 120 345 Z" 
+          fill="#0c1d2e" stroke="#1e3a5f" stroke-width="3" opacity="0.9" />
+
+    <!-- Mail Envelope Crease Lines -->
+    <path d="M 120 365 L 225 285" stroke="#38bdf8" stroke-width="2" stroke-opacity="0.35" />
+    <path d="M 392 365 L 287 285" stroke="#34d399" stroke-width="2" stroke-opacity="0.35" />
+
+    <!-- Left Wing (Cyber Blue / Cyan) -->
+    <path d="M 256 100 L 96 270 L 256 335 L 256 100 Z" fill="url(#leftWing)" />
+    
+    <!-- Left Underfold / Shadow -->
+    <path d="M 256 335 L 180 295 L 256 265 Z" fill="url(#bottomFold)" opacity="0.6" />
+
+    <!-- Right Wing (Emerald / Mint) -->
+    <path d="M 256 100 L 416 270 L 256 335 L 256 100 Z" fill="url(#rightWing)" />
+
+    <!-- Right Underfold / Shadow -->
+    <path d="M 256 335 L 332 295 L 256 265 Z" fill="#064e3b" opacity="0.8" />
+
+    <!-- Center Spine / Fuselage -->
+    <path d="M 256 95 L 246 275 L 256 335 L 266 275 Z" fill="url(#centerFuselage)" />
+  </g>
+
+  <!-- AI Sparkle Core (Nose of Plane) -->
+  <g filter="url(#glowFilter)">
+    <!-- 4-point AI Star at Crown -->
+    <path d="M 256 75 Q 256 95 242 95 Q 256 95 256 115 Q 256 95 270 95 Q 256 95 256 75 Z" fill="#ffffff" />
+    <circle cx="256" cy="95" r="3.5" fill="#a7f3d0" />
+  </g>
+
+  <!-- Glossy Glass Shield Overlay on Top Half -->
+  <path d="M 0 112 C 0 50 50 0 112 0 L 400 0 C 462 0 512 50 512 112 L 512 210 C 370 260 140 240 0 180 Z" 
+        fill="url(#specularGleam)" rx="112" />
+
+  <!-- Outer Border Ring -->
+  <rect width="508" height="508" x="2" y="2" rx="110" fill="none" stroke="#34d399" stroke-width="3" stroke-opacity="0.25" />
+</svg>
