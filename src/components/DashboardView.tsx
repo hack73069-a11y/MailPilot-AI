@@ -193,19 +193,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </div>
 
       {/* Autonomous Auto-Reply Control Bar */}
-      <div className="bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 rounded-2xl p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 rounded-2xl p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all duration-300">
         <div className="flex items-start sm:items-center gap-3.5">
           <div className="p-3 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shrink-0">
-            <Zap className="w-6 h-6 animate-pulse" />
+            <Zap className={`w-6 h-6 transition-transform duration-300 ${stats.replyMode === 'automatic' ? 'animate-daemon-pulse scale-105' : 'text-slate-400'}`} />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-base font-bold text-slate-900 dark:text-white">
                 Autonomous Auto-Reply Engine
               </h2>
-              <span className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                <span>{stats.replyMode === 'automatic' ? 'Autonomous Mode (Direct Send)' : 'Approval Mode'}</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                <span className={`w-2 h-2 rounded-full transition-all duration-300 ${stats.replyMode === 'automatic' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-daemon-pulse' : 'bg-slate-400'}`} />
+                <span className="font-medium">{stats.replyMode === 'automatic' ? 'Autonomous Mode (Direct Send)' : 'Approval Mode'}</span>
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 max-w-xl">

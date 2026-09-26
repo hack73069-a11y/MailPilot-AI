@@ -18,6 +18,7 @@ import {
   googleSignIn,
   autoReconnectSession,
   clearExpiredSession,
+  switchConnectedAccount,
 } from './services/auth.js';
 import { api } from './services/api.js';
 import {
@@ -75,7 +76,13 @@ export default function App() {
   }, [theme]);
 
   const toggleTheme = () => {
+    // Add temporary transitioning class for smooth micro-animations across all UI surfaces
+    const root = document.documentElement;
+    root.classList.add('theme-transitioning');
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+    setTimeout(() => {
+      root.classList.remove('theme-transitioning');
+    }, 450);
   };
 
   // Fetch all core data
@@ -216,6 +223,32 @@ export default function App() {
     }
   };
 
+  // Multi-account switch handler
+  const handleSwitchAccount = async (targetEmail: string) => {
+    setIsSyncing(true);
+    setSyncAuthError(null);
+    try {
+      const switched = await switchConnectedAccount(targetEmail);
+      if (switched) {
+        setUser({
+          uid: switched.uid,
+          email: switched.email,
+          displayName: switched.displayName,
+          photoURL: switched.photoURL,
+        } as any);
+        setToken(switched.accessToken);
+        await handleSyncGmail(switched.accessToken);
+      }
+    } catch (err: any) {
+      console.warn('Switch account notice:', err.message);
+      if (err.isAuthError || err.status === 401 || (err.message && err.message.includes('authError'))) {
+        setSyncAuthError(`Session for ${targetEmail} expired. Click Reconnect Gmail to renew credentials.`);
+      }
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   // Direct Sign-In Handler
   const handleDirectSignIn = async () => {
     try {
@@ -281,6 +314,7 @@ export default function App() {
           setToken(accessToken);
           await handleSyncGmail(accessToken);
         }}
+        onSwitchAccount={handleSwitchAccount}
         isSyncing={isSyncing}
         theme={theme}
         onToggleTheme={toggleTheme}

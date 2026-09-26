@@ -13,6 +13,9 @@ import {
   ShieldCheck,
   Clock,
   Play,
+  Pause,
+  Power,
+  Activity,
   Layers,
   ArrowRight,
 } from 'lucide-react';
@@ -32,6 +35,7 @@ export const HostingDaemonView: React.FC<HostingDaemonViewProps> = ({
   const [daemonStatus, setDaemonStatus] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [triggering, setTriggering] = useState(false);
+  const [togglingWorker, setTogglingWorker] = useState(false);
   const [triggerFeedback, setTriggerFeedback] = useState<string | null>(null);
   const [activeDeployTab, setActiveDeployTab] = useState<'pm2' | 'docker' | 'systemd' | 'cloud'>('pm2');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -57,6 +61,28 @@ export const HostingDaemonView: React.FC<HostingDaemonViewProps> = ({
     navigator.clipboard.writeText(text);
     setCopiedKey(key);
     setTimeout(() => setCopiedKey(null), 2500);
+  };
+
+  const handleToggleWorker = async () => {
+    if (togglingWorker) return;
+    setTogglingWorker(true);
+    const isCurrentlyRunning = Boolean(daemonStatus?.running);
+    try {
+      if (isCurrentlyRunning) {
+        const res = await api.stopWorker();
+        setDaemonStatus(res.status);
+        setTriggerFeedback('24/7 background worker paused.');
+      } else {
+        const res = await api.startWorker();
+        setDaemonStatus(res.status);
+        setTriggerFeedback('24/7 background worker active and polling.');
+      }
+      setTimeout(() => setTriggerFeedback(null), 4000);
+    } catch (err: any) {
+      setTriggerFeedback(`Worker toggle error: ${err.message}`);
+    } finally {
+      setTogglingWorker(false);
+    }
   };
 
   const handleTriggerPoll = async () => {
@@ -177,16 +203,35 @@ WantedBy=multi-user.target`;
           <button
             onClick={fetchStatus}
             disabled={loading}
-            className="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-750 transition flex items-center gap-1.5 cursor-pointer"
+            className="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-750 transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
             <span>Refresh State</span>
           </button>
 
           <button
+            onClick={handleToggleWorker}
+            disabled={togglingWorker}
+            className={`px-3.5 py-2 rounded-xl font-bold text-xs shadow-xs flex items-center gap-1.5 transition-all duration-300 cursor-pointer active:scale-95 disabled:opacity-50 ${
+              daemonStatus?.running
+                ? 'border border-amber-300 dark:border-amber-700/80 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/50'
+                : 'border border-emerald-300 dark:border-emerald-700/80 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50'
+            }`}
+          >
+            {togglingWorker ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            ) : daemonStatus?.running ? (
+              <Pause className="w-3.5 h-3.5" />
+            ) : (
+              <Play className="w-3.5 h-3.5 fill-current" />
+            )}
+            <span>{daemonStatus?.running ? 'Pause Worker' : 'Resume Worker'}</span>
+          </button>
+
+          <button
             onClick={handleTriggerPoll}
             disabled={triggering}
-            className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/20 flex items-center gap-2 transition cursor-pointer disabled:opacity-50"
+            className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/20 flex items-center gap-2 transition-all active:scale-95 cursor-pointer disabled:opacity-50"
           >
             {triggering ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
             <span>{triggering ? 'Polling Gmail...' : 'Run Daemon Poll Now'}</span>
@@ -217,17 +262,62 @@ WantedBy=multi-user.target`;
 
       {/* Live Daemon Status Dashboard Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Daemon State */}
-        <div className="bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 rounded-2xl p-5 shadow-xs">
+        {/* Daemon State with Micro-Animation Toggle */}
+        <div className="bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 rounded-2xl p-5 shadow-xs transition-all hover:border-slate-300 dark:hover:border-slate-600">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-xs mb-2">
             <span>Daemon State</span>
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <div className="flex items-center gap-1.5">
+              <span
+                className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${
+                  daemonStatus?.running
+                    ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)] animate-daemon-pulse'
+                    : 'bg-slate-400 opacity-60'
+                }`}
+              />
+              <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                {daemonStatus?.running ? 'Online' : 'Paused'}
+              </span>
+            </div>
           </div>
-          <div className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <span>{daemonStatus?.running ? 'Active & Polling' : 'Idle'}</span>
+
+          <div className="flex items-center justify-between mt-1">
+            <div className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <span className="transition-all duration-300">
+                {daemonStatus?.running ? 'Active & Polling' : 'Worker Paused'}
+              </span>
+            </div>
+
+            {/* Micro-Animated Toggle Pill Button */}
+            <button
+              onClick={handleToggleWorker}
+              disabled={togglingWorker}
+              title={daemonStatus?.running ? 'Click to Pause 24/7 Worker' : 'Click to Activate 24/7 Worker'}
+              className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full p-0.5 transition-colors duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500/40 disabled:opacity-50 ${
+                daemonStatus?.running ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-600'
+              }`}
+            >
+              <span className="sr-only">Toggle 24/7 Daemon</span>
+              <span
+                className={`pointer-events-none flex h-6 w-6 items-center justify-center rounded-full bg-white shadow-md transform transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
+                  daemonStatus?.running ? 'translate-x-5 text-emerald-600' : 'translate-x-0 text-slate-400'
+                }`}
+              >
+                {togglingWorker ? (
+                  <RefreshCw className="w-3 h-3 animate-spin text-slate-500" />
+                ) : daemonStatus?.running ? (
+                  <Power className="w-3 h-3 text-emerald-600" />
+                ) : (
+                  <Pause className="w-3 h-3 text-slate-400" />
+                )}
+              </span>
+            </button>
           </div>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-            Interval: Every <span className="font-mono tabular-nums">{daemonStatus?.pollIntervalSeconds || 45}s</span>
+
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2 flex items-center justify-between">
+            <span>Interval: Every <span className="font-mono tabular-nums">{daemonStatus?.pollIntervalSeconds || 45}s</span></span>
+            <span className="text-[10px] text-slate-400 dark:text-slate-500">
+              {daemonStatus?.running ? 'Autonomous' : 'Standby'}
+            </span>
           </p>
         </div>
 

@@ -11,14 +11,89 @@
     color-scheme: dark;
   }
 
+  /* Global fluid transition for dark/light theme switching */
+  html.theme-transitioning,
+  html.theme-transitioning *,
+  html.theme-transitioning *::before,
+  html.theme-transitioning *::after {
+    transition: background-color 380ms cubic-bezier(0.4, 0, 0.2, 1),
+                border-color 380ms cubic-bezier(0.4, 0, 0.2, 1),
+                color 320ms cubic-bezier(0.4, 0, 0.2, 1),
+                fill 320ms cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 380ms cubic-bezier(0.4, 0, 0.2, 1) !important;
+  }
+
   body {
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    transition: background-color 350ms cubic-bezier(0.4, 0, 0.2, 1),
+                color 350ms cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   /* Ensure numbers and telemetry vertically align */
   .tabular-nums {
     font-variant-numeric: tabular-nums;
   }
+}
+
+/* Micro-animations */
+@keyframes daemonPulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.75;
+  }
+}
+
+@keyframes gentleSpin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes themeIconSun {
+  0% {
+    transform: rotate(-45deg) scale(0.7);
+    opacity: 0;
+  }
+  60% {
+    transform: rotate(10deg) scale(1.1);
+  }
+  100% {
+    transform: rotate(0deg) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes themeIconMoon {
+  0% {
+    transform: rotate(45deg) scale(0.7);
+    opacity: 0;
+  }
+  60% {
+    transform: rotate(-10deg) scale(1.1);
+  }
+  100% {
+    transform: rotate(0deg) scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-daemon-pulse {
+  animation: daemonPulse 2.2s infinite ease-in-out;
+}
+
+.animate-theme-sun {
+  animation: themeIconSun 380ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-theme-moon {
+  animation: themeIconMoon 380ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }

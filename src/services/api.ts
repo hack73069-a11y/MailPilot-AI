@@ -289,4 +289,18 @@ export const api = {
     });
     return res.json();
   },
+
+  async startWorker() {
+    const res = await fetchWithAuth('/api/worker/start', {
+      method: 'POST',
+    });
+    return res.json();
+  },
+
+  async stopWorker() {
+    const res = await fetchWithAuth('/api/worker/stop', {
+      method: 'POST',
+    });
+    return res.json();
+  },
 };

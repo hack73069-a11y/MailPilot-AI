@@ -82,6 +82,24 @@ app.delete('/api/worker/token', (req: Request, res: Response) => {
   });
 });
 
+app.post('/api/worker/start', (req: Request, res: Response) => {
+  backgroundDaemon.start();
+  res.json({
+    success: true,
+    message: '24/7 background worker daemon active',
+    status: backgroundDaemon.getStatus(),
+  });
+});
+
+app.post('/api/worker/stop', (req: Request, res: Response) => {
+  backgroundDaemon.stop();
+  res.json({
+    success: true,
+    message: '24/7 background worker daemon paused',
+    status: backgroundDaemon.getStatus(),
+  });
+});
+
 app.post('/api/worker/trigger', async (req: Request, res: Response) => {
   try {
     const result = await backgroundDaemon.pollCycle();

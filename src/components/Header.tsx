@@ -13,8 +13,21 @@ import {
   CheckCircle2,
   AlertTriangle,
   Zap,
+  ChevronDown,
+  UserPlus,
+  Building2,
+  User as UserIcon,
+  Trash2,
+  Check,
 } from 'lucide-react';
-import { googleSignIn, logout } from '../services/auth.js';
+import {
+  googleSignIn,
+  logout,
+  getConnectedAccounts,
+  switchConnectedAccount,
+  removeConnectedAccount,
+  ConnectedGoogleAccount,
+} from '../services/auth.js';
 import { api } from '../services/api.js';
 import { ReplyMode } from '../../server/types.js';
 
@@ -26,6 +39,7 @@ interface HeaderProps {
   onRefresh: () => void;
   onSimulate: (type: 'meeting' | 'support' | 'security' | 'sales') => void;
   onSignInSuccess?: (user: any, token: string) => void;
+  onSwitchAccount?: (email: string) => Promise<void>;
   isSyncing: boolean;
   theme: 'dark' | 'light';
   onToggleTheme: () => void;
@@ -40,6 +54,7 @@ export const Header: React.FC<HeaderProps> = ({
   onRefresh,
   onSimulate,
   onSignInSuccess,
+  onSwitchAccount,
   isSyncing,
   theme,
   onToggleTheme,
@@ -51,6 +66,11 @@ export const Header: React.FC<HeaderProps> = ({
   const [showNotifications, setShowNotifications] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+
+  const [showAccountSwitcher, setShowAccountSwitcher] = useState(false);
+  const [switchingEmail, setSwitchingEmail] = useState<string | null>(null);
+
+  const connectedAccounts = getConnectedAccounts();
 
   const handleModeSelect = (newMode: ReplyMode) => {
     onModeChange(newMode);
@@ -81,7 +101,40 @@ export const Header: React.FC<HeaderProps> = ({
 
   const handleSignOut = async () => {
     await logout();
+    setShowAccountSwitcher(false);
     onRefresh();
+  };
+
+  const handleSwitchAccount = async (targetEmail: string) => {
+    setSwitchingEmail(targetEmail);
+    setShowAccountSwitcher(false);
+    try {
+      if (onSwitchAccount) {
+        await onSwitchAccount(targetEmail);
+      } else {
+        await switchConnectedAccount(targetEmail);
+        onRefresh();
+      }
+    } catch (err: any) {
+      setAuthError(`Failed to switch account: ${err.message}`);
+    } finally {
+      setSwitchingEmail(null);
+    }
+  };
+
+  const handleRemoveAccount = async (targetEmail: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await removeConnectedAccount(targetEmail);
+      onRefresh();
+    } catch (err: any) {
+      setAuthError(`Failed to remove account: ${err.message}`);
+    }
+  };
+
+  const handleAddAnotherAccount = async () => {
+    setShowAccountSwitcher(false);
+    await handleSignIn();
   };
 
   return (
@@ -250,7 +303,7 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </div>
 
-            {/* Day / Night Theme Switch */}
+            {/* Day / Night Theme Switch with Fluid Micro-Animations */}
             <div
               onClick={onToggleTheme}
               role="button"
@@ -263,60 +316,254 @@ export const Header: React.FC<HeaderProps> = ({
               }}
               title={`Currently in ${theme === 'dark' ? 'Night (Dark)' : 'Day (Light)'} mode. Click to switch to ${theme === 'dark' ? 'Day (Light)' : 'Night (Dark)'} mode.`}
               aria-label="Toggle Day and Night mode"
-              className="flex items-center p-0.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-xs font-medium transition cursor-pointer select-none"
+              className="relative flex items-center p-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/90 text-xs font-medium cursor-pointer select-none transition-shadow hover:shadow-xs group"
             >
+              {/* Fluid Sliding Background Capsule */}
               <div
-                className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-all ${
+                className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-lg transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
                   theme === 'light'
-                    ? 'bg-white text-amber-600 shadow-xs font-semibold'
-                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
+                    ? 'left-1 bg-white shadow-xs border border-amber-200/50'
+                    : 'left-[calc(50%)] bg-slate-900 shadow-xs border border-indigo-500/30'
                 }`}
-              >
-                <Sun className={`w-3.5 h-3.5 ${theme === 'light' ? 'text-amber-500 fill-amber-500/20' : 'text-slate-400'}`} />
-                <span className="hidden sm:inline text-[11px]">Day</span>
-              </div>
+              />
+
+              {/* Day Option */}
               <div
-                className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-all ${
-                  theme === 'dark'
-                    ? 'bg-slate-900 text-indigo-400 shadow-xs font-semibold'
-                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
+                className={`relative z-10 flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-lg transition-all duration-200 ${
+                  theme === 'light'
+                    ? 'text-amber-700 font-bold'
+                    : 'text-slate-400 group-hover:text-slate-200'
                 }`}
               >
-                <Moon className={`w-3.5 h-3.5 ${theme === 'dark' ? 'text-indigo-400 fill-indigo-400/20' : 'text-slate-400'}`} />
-                <span className="hidden sm:inline text-[11px]">Night</span>
+                <Sun
+                  className={`w-3.5 h-3.5 transition-transform duration-300 ${
+                    theme === 'light'
+                      ? 'text-amber-500 fill-amber-500/30 animate-theme-sun scale-110'
+                      : 'text-slate-400 scale-95 group-hover:rotate-45'
+                  }`}
+                />
+                <span className="hidden sm:inline text-[11px] tracking-tight">Day</span>
+              </div>
+
+              {/* Night Option */}
+              <div
+                className={`relative z-10 flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-lg transition-all duration-200 ${
+                  theme === 'dark'
+                    ? 'text-indigo-300 font-bold'
+                    : 'text-slate-400 group-hover:text-slate-600'
+                }`}
+              >
+                <Moon
+                  className={`w-3.5 h-3.5 transition-transform duration-300 ${
+                    theme === 'dark'
+                      ? 'text-indigo-400 fill-indigo-400/30 animate-theme-moon scale-110'
+                      : 'text-slate-400 scale-95 group-hover:-rotate-12'
+                  }`}
+                />
+                <span className="hidden sm:inline text-[11px] tracking-tight">Night</span>
               </div>
             </div>
 
-            {/* Google Account / Sign In */}
+            {/* Multi-Account Switcher & Google Sign In */}
             {user && token ? (
-              <div className="flex items-center gap-2 pl-2 border-l border-slate-200 dark:border-slate-800">
-                <div className="hidden sm:flex flex-col text-right">
-                  <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 max-w-[140px] truncate">
-                    {user.displayName || user.email}
-                  </span>
-                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 flex items-center justify-end gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    Gmail Connected
-                  </span>
-                </div>
-                {user.photoURL ? (
-                  <img
-                    src={user.photoURL}
-                    alt={user.displayName || 'User'}
-                    className="w-8 h-8 rounded-full border border-slate-200 dark:border-slate-700"
-                  />
-                ) : (
-                  <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 flex items-center justify-center font-bold text-xs">
-                    {(user.email || 'U')[0].toUpperCase()}
-                  </div>
-                )}
+              <div className="relative pl-2 border-l border-slate-200 dark:border-slate-800">
                 <button
-                  onClick={handleSignOut}
-                  title="Disconnect Gmail"
-                  className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                  onClick={() => setShowAccountSwitcher(!showAccountSwitcher)}
+                  className="flex items-center gap-2 px-2.5 py-1 rounded-xl border border-slate-200/90 dark:border-slate-700/80 bg-slate-50/80 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-750 transition-all cursor-pointer group shadow-2xs"
+                  title="Switch between connected Google accounts or add another workspace inbox"
                 >
-                  <LogOut className="w-4 h-4" />
+                  {user.photoURL ? (
+                    <img
+                      src={user.photoURL}
+                      alt={user.displayName || 'User'}
+                      className="w-7 h-7 rounded-full border border-slate-200 dark:border-slate-700 object-cover shrink-0"
+                    />
+                  ) : (
+                    <div className="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 flex items-center justify-center font-bold text-xs shrink-0">
+                      {(user.email || 'U')[0].toUpperCase()}
+                    </div>
+                  )}
+
+                  <div className="hidden sm:flex flex-col text-left leading-none">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 max-w-[120px] truncate">
+                        {user.displayName || user.email}
+                      </span>
+                      {user.email && (
+                        <span
+                          className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full leading-tight ${
+                            !(
+                              user.email.toLowerCase().endsWith('@gmail.com') ||
+                              user.email.toLowerCase().endsWith('@googlemail.com')
+                            )
+                              ? 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300'
+                              : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'
+                          }`}
+                        >
+                          {!(
+                            user.email.toLowerCase().endsWith('@gmail.com') ||
+                            user.email.toLowerCase().endsWith('@googlemail.com')
+                          )
+                            ? 'Workspace'
+                            : 'Personal'}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1 mt-0.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <span className="truncate max-w-[110px]">{user.email}</span>
+                    </span>
+                  </div>
+
+                  <ChevronDown
+                    className={`w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200 transition-transform duration-200 ${
+                      showAccountSwitcher ? 'rotate-180 text-indigo-500' : ''
+                    }`}
+                  />
                 </button>
+
+                {/* Account Switcher Dropdown Menu */}
+                {showAccountSwitcher && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setShowAccountSwitcher(false)}
+                    />
+                    <div className="absolute right-0 mt-2 w-80 sm:w-88 rounded-2xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-800 p-3 z-50 space-y-2.5 animate-in fade-in duration-150">
+                      {/* Header */}
+                      <div className="flex items-center justify-between px-1 pb-2 border-b border-slate-100 dark:border-slate-800">
+                        <div>
+                          <h4 className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                            <span>Connected Google Accounts</span>
+                            <span className="text-[10px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded-full text-slate-500 font-semibold">
+                              {connectedAccounts.length || 1}
+                            </span>
+                          </h4>
+                          <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                            Switch active inbox or monitor workspace email
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Accounts List */}
+                      <div className="space-y-1.5 max-h-64 overflow-y-auto pr-0.5">
+                        {(connectedAccounts.length > 0
+                          ? connectedAccounts
+                          : [
+                              {
+                                uid: user.uid || 'current',
+                                email: user.email,
+                                displayName: user.displayName,
+                                photoURL: user.photoURL,
+                                accessToken: token,
+                                isWorkspace: !(
+                                  user.email?.toLowerCase().endsWith('@gmail.com') ||
+                                  user.email?.toLowerCase().endsWith('@googlemail.com')
+                                ),
+                                connectedAt: Date.now(),
+                                lastActive: Date.now(),
+                              },
+                            ]
+                        ).map((acc) => {
+                          const isActive =
+                            user?.email?.toLowerCase() === acc.email.toLowerCase();
+                          return (
+                            <div
+                              key={acc.email}
+                              className={`p-2.5 rounded-xl border transition-all flex items-center justify-between gap-2.5 ${
+                                isActive
+                                  ? 'bg-emerald-50/70 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800/80 shadow-2xs'
+                                  : 'bg-slate-50/50 dark:bg-slate-800/50 border-slate-200/80 dark:border-slate-750 hover:bg-slate-100 dark:hover:bg-slate-800'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                {acc.photoURL ? (
+                                  <img
+                                    src={acc.photoURL}
+                                    alt={acc.displayName || acc.email}
+                                    className="w-8 h-8 rounded-full border border-slate-200 dark:border-slate-700 object-cover shrink-0"
+                                  />
+                                ) : (
+                                  <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 flex items-center justify-center font-bold text-xs shrink-0">
+                                    {(acc.email || 'U')[0].toUpperCase()}
+                                  </div>
+                                )}
+                                <div className="min-w-0 leading-tight">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate max-w-[120px]">
+                                      {acc.displayName || acc.email.split('@')[0]}
+                                    </span>
+                                    <span
+                                      className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full ${
+                                        acc.isWorkspace
+                                          ? 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300'
+                                          : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                                      }`}
+                                    >
+                                      {acc.isWorkspace ? 'Workspace' : 'Personal'}
+                                    </span>
+                                  </div>
+                                  <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate max-w-[150px] mt-0.5">
+                                    {acc.email}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {isActive ? (
+                                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold">
+                                    <Check className="w-3 h-3" />
+                                    Active
+                                  </span>
+                                ) : (
+                                  <button
+                                    onClick={() => handleSwitchAccount(acc.email)}
+                                    disabled={switchingEmail === acc.email}
+                                    className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 text-xs font-semibold transition active:scale-95 cursor-pointer shadow-2xs"
+                                  >
+                                    {switchingEmail === acc.email ? (
+                                      <RefreshCw className="w-3 h-3 animate-spin" />
+                                    ) : (
+                                      'Switch'
+                                    )}
+                                  </button>
+                                )}
+
+                                {connectedAccounts.length > 1 && (
+                                  <button
+                                    onClick={(e) => handleRemoveAccount(acc.email, e)}
+                                    title={`Disconnect ${acc.email}`}
+                                    className="p-1 rounded-md text-slate-400 hover:text-rose-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Footer Actions */}
+                      <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-1">
+                        <button
+                          onClick={handleAddAnotherAccount}
+                          className="w-full px-3 py-2 rounded-xl text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 transition flex items-center justify-center gap-2 cursor-pointer"
+                        >
+                          <UserPlus className="w-3.5 h-3.5" />
+                          <span>Connect Another Google Account</span>
+                        </button>
+                        <button
+                          onClick={handleSignOut}
+                          className="w-full px-3 py-1.5 rounded-xl text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <LogOut className="w-3.5 h-3.5" />
+                          <span>Sign Out All Accounts</span>
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             ) : (
               <div className="flex items-center gap-1.5">
