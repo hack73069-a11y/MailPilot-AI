@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { UserPreferences, ReplyTone } from '../../server/types.js';
 import { api } from '../services/api.js';
+import { toast } from '../services/toast.js';
 
 interface PersonalityViewProps {
   preferences: UserPreferences;
@@ -26,7 +27,6 @@ export const PersonalityView: React.FC<PersonalityViewProps> = ({
   const [form, setForm] = useState<UserPreferences>(preferences);
   const [isSaving, setIsSaving] = useState(false);
   const [newExample, setNewExample] = useState('');
-  const [status, setStatus] = useState<string | null>(null);
 
   React.useEffect(() => {
     setForm(preferences);
@@ -34,13 +34,12 @@ export const PersonalityView: React.FC<PersonalityViewProps> = ({
 
   const handleSave = async () => {
     setIsSaving(true);
-    setStatus(null);
     try {
       await api.updateSettings(form);
-      setStatus('AI Personality & Scheduling settings saved successfully!');
+      toast.success('AI Personality & Scheduling settings saved successfully!');
       onRefresh();
     } catch (err: any) {
-      setStatus(`Failed to save settings: ${err.message}`);
+      toast.error(`Failed to save settings: ${err.message}`);
     } finally {
       setIsSaving(false);
     }
@@ -88,24 +87,12 @@ export const PersonalityView: React.FC<PersonalityViewProps> = ({
         <button
           onClick={handleSave}
           disabled={isSaving}
-          className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-600/30 flex items-center gap-2 transition disabled:opacity-50 self-start sm:self-auto"
+          className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-600/30 flex items-center gap-2 transition-all active:scale-95 cursor-pointer disabled:opacity-50 self-start sm:self-auto"
         >
           <Save className="w-4 h-4" />
           <span>{isSaving ? 'Saving...' : 'Save Settings'}</span>
         </button>
       </div>
-
-      {status && (
-        <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200 text-xs flex items-center justify-between border border-emerald-200">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-            <span>{status}</span>
-          </div>
-          <button onClick={() => setStatus(null)} className="font-bold">
-            &times;
-          </button>
-        </div>
-      )}
 
       {/* Grid: Left Column (Tone & Style), Right Column (Working Hours & Signature) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { UserPreferences, AuditLog } from '../../server/types.js';
 import { api } from '../services/api.js';
+import { toast } from '../services/toast.js';
 
 interface SafetyViewProps {
   preferences: UserPreferences;
@@ -28,7 +29,6 @@ export const SafetyView: React.FC<SafetyViewProps> = ({
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [newAllowedDomain, setNewAllowedDomain] = useState('');
   const [newBlockedDomain, setNewBlockedDomain] = useState('');
-  const [status, setStatus] = useState<string | null>(null);
 
   React.useEffect(() => {
     setForm(preferences);
@@ -47,10 +47,10 @@ export const SafetyView: React.FC<SafetyViewProps> = ({
   const handleSavePreferences = async () => {
     try {
       await api.updateSettings(form);
-      setStatus('Safety thresholds and domain policies updated successfully.');
+      toast.success('Safety thresholds and domain policies saved!');
       onRefresh();
     } catch (err: any) {
-      setStatus(`Error saving: ${err.message}`);
+      toast.error(`Error saving: ${err.message}`);
     }
   };
 
@@ -92,10 +92,10 @@ export const SafetyView: React.FC<SafetyViewProps> = ({
     try {
       await api.deleteUserData();
       setShowDeleteModal(false);
-      setStatus('All application data, email caches, and rules have been permanently wiped.');
+      toast.success('All application data, email caches, and rules have been permanently wiped.');
       onRefresh();
     } catch (err: any) {
-      setStatus(`Deletion error: ${err.message}`);
+      toast.error(`Deletion error: ${err.message}`);
     }
   };
 
@@ -115,23 +115,11 @@ export const SafetyView: React.FC<SafetyViewProps> = ({
 
         <button
           onClick={handleSavePreferences}
-          className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-md shadow-indigo-600/20 transition self-start sm:self-auto"
+          className="ripple-feedback px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-md shadow-indigo-600/20 transition-all active:scale-95 cursor-pointer self-start sm:self-auto"
         >
           Save Safety Settings
         </button>
       </div>
-
-      {status && (
-        <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200 text-xs flex items-center justify-between border border-emerald-200">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-            <span>{status}</span>
-          </div>
-          <button onClick={() => setStatus(null)} className="font-bold">
-            &times;
-          </button>
-        </div>
-      )}
 
       {/* Hard Gate Safety Policies Checklist */}
       <div className="bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 rounded-2xl p-5 shadow-xs space-y-3">

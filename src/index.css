@@ -97,3 +97,78 @@
 .animate-theme-moon {
   animation: themeIconMoon 380ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+@keyframes toastSlideIn {
+  from {
+    transform: translateY(16px) scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes toastProgress {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes skeletonPulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.animate-toast-slide-in {
+  animation: toastSlideIn 260ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-toast-progress {
+  animation-name: toastProgress;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+.animate-skeleton-pulse {
+  animation: skeletonPulse 1.6s infinite ease-in-out;
+}
+
+/* Tactile button press & haptic ripple feedback */
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ripple-feedback {
+  position: relative;
+  overflow: hidden;
+}
+
+.ripple-feedback::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.45) 0%, transparent 70%);
+  opacity: 0;
+  transform: scale(2.5);
+  pointer-events: none;
+  transition: opacity 350ms cubic-bezier(0.16, 1, 0.3, 1), transform 350ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ripple-feedback:active::after {
+  opacity: 0.4;
+  transform: scale(0.6);
+  transition: 0s;
+}
+
+.dark .ripple-feedback::after {
+  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.25) 0%, transparent 70%);
+}
+

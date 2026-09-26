@@ -10,6 +10,9 @@ import { SafetyView } from './components/SafetyView.js';
 import { DiagnosticsView } from './components/DiagnosticsView.js';
 import { HostingDaemonView } from './components/HostingDaemonView.js';
 import { SettingsView } from './components/SettingsView.js';
+import { ToastContainer } from './components/ToastContainer.js';
+import { QuickStartWalkthrough } from './components/QuickStartWalkthrough.js';
+import { toast } from './services/toast.js';
 import {
   initAuth,
   subscribeAuth,
@@ -194,8 +197,11 @@ export default function App() {
     try {
       const activeToken = overrideToken || token || (await getAccessToken());
       if (activeToken) {
-        await api.syncGmail();
+        const syncRes = await api.syncGmail();
         setSyncAuthError(null);
+        toast.success(`Daemon sync cycle completed • ${syncRes.syncedCount || 0} messages synced`);
+      } else {
+        toast.info('Daemon sync cycle completed • Inbox up to date');
       }
       await refreshAllData();
     } catch (err: any) {
@@ -209,10 +215,12 @@ export default function App() {
             setSyncAuthError(null);
             await api.syncGmail();
             await refreshAllData();
+            toast.success('Session refreshed & daemon sync cycle completed');
             return;
           }
         } catch {}
         setSyncAuthError('Gmail access token is expired or unauthorized. Click "Reconnect Gmail" to renew your session.');
+        toast.warning('Gmail session update needed. Please reconnect your Google account.');
       } else {
         console.warn('Sync notice:', err.message);
       }
@@ -271,8 +279,10 @@ export default function App() {
       await refreshAllData();
       setSelectedEmailId(res.email.id);
       setCurrentTab('inbox');
+      toast.info(`Simulated incoming ${type} email • Gemini triage completed!`);
     } catch (err) {
       console.error('Simulation failed:', err);
+      toast.error('Simulation failed to generate message');
     } finally {
       setIsSyncing(false);
     }
@@ -386,6 +396,8 @@ export default function App() {
             onRefresh={refreshAllData}
             token={token}
             onConnect={handleDirectSignIn}
+            isLoading={isSyncing}
+            onSimulate={handleSimulate}
           />
         )}
 
@@ -397,6 +409,8 @@ export default function App() {
               setSelectedEmailId(id);
               setCurrentTab('inbox');
             }}
+            isLoading={isSyncing}
+            onSimulate={handleSimulate}
           />
         )}
 
@@ -468,6 +482,15 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {/* Floating Toast Notifications */}
+      <ToastContainer />
+
+      {/* Optional Dismissible Quick-Start Walkthrough */}
+      <QuickStartWalkthrough
+        onSimulateTest={handleSimulate}
+        onNavigateTab={(tab) => setCurrentTab(tab as TabType)}
+      />
     </div>
   );
 }

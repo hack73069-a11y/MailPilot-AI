@@ -20,6 +20,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { api } from '../services/api.js';
+import { toast } from '../services/toast.js';
 
 interface HostingDaemonViewProps {
   user?: any;
@@ -36,7 +37,6 @@ export const HostingDaemonView: React.FC<HostingDaemonViewProps> = ({
   const [loading, setLoading] = useState(true);
   const [triggering, setTriggering] = useState(false);
   const [togglingWorker, setTogglingWorker] = useState(false);
-  const [triggerFeedback, setTriggerFeedback] = useState<string | null>(null);
   const [activeDeployTab, setActiveDeployTab] = useState<'pm2' | 'docker' | 'systemd' | 'cloud'>('pm2');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
@@ -71,15 +71,27 @@ export const HostingDaemonView: React.FC<HostingDaemonViewProps> = ({
       if (isCurrentlyRunning) {
         const res = await api.stopWorker();
         setDaemonStatus(res.status);
-        setTriggerFeedback('24/7 background worker paused.');
+        toast.warning('24/7 background worker paused', {
+          action: {
+            label: 'Resume',
+            onClick: async () => {
+              try {
+                const resumed = await api.startWorker();
+                setDaemonStatus(resumed.status);
+                toast.success('24/7 background worker resumed and polling Gmail');
+              } catch (err: any) {
+                toast.error(err.message || 'Failed to resume worker');
+              }
+            },
+          },
+        });
       } else {
         const res = await api.startWorker();
         setDaemonStatus(res.status);
-        setTriggerFeedback('24/7 background worker active and polling.');
+        toast.success('24/7 background worker active and polling Gmail autonomously');
       }
-      setTimeout(() => setTriggerFeedback(null), 4000);
     } catch (err: any) {
-      setTriggerFeedback(`Worker toggle error: ${err.message}`);
+      toast.error(`Worker toggle error: ${err.message}`);
     } finally {
       setTogglingWorker(false);
     }
@@ -87,16 +99,18 @@ export const HostingDaemonView: React.FC<HostingDaemonViewProps> = ({
 
   const handleTriggerPoll = async () => {
     setTriggering(true);
-    setTriggerFeedback(null);
     try {
       const res = await api.triggerWorkerPoll();
       setDaemonStatus(res.status);
-      setTriggerFeedback(
-        `Success! Daemon polled Gmail: ${res.processedCount} messages checked, ${res.repliesDispatched} auto-replies dispatched.`
+      toast.success(
+        `Daemon sync cycle completed • ${res.processedCount} messages checked, ${res.repliesDispatched} auto-replies dispatched.`,
+        {
+          duration: 5000,
+        }
       );
       if (onRefreshAll) onRefreshAll();
     } catch (err: any) {
-      setTriggerFeedback(`Manual trigger error: ${err.message}`);
+      toast.error(`Daemon poll error: ${err.message}`);
     } finally {
       setTriggering(false);
     }
@@ -231,20 +245,13 @@ WantedBy=multi-user.target`;
           <button
             onClick={handleTriggerPoll}
             disabled={triggering}
-            className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/20 flex items-center gap-2 transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+            className="ripple-feedback px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/20 flex items-center gap-2 transition-all active:scale-95 cursor-pointer disabled:opacity-50"
           >
             {triggering ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
             <span>{triggering ? 'Polling Gmail...' : 'Run Daemon Poll Now'}</span>
           </button>
         </div>
       </div>
-
-      {triggerFeedback && (
-        <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-200 flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-          <span>{triggerFeedback}</span>
-        </div>
-      )}
 
       {daemonStatus?.lastError && (
         <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200 flex items-center justify-between gap-3">

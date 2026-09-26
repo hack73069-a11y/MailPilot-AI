@@ -19,9 +19,12 @@ import {
   Shield,
   Tag,
   Zap,
+  Archive,
+  ArchiveRestore,
 } from 'lucide-react';
 import { EmailMessage, EmailCategory, UrgencyLevel } from '../../server/types.js';
 import { api } from '../services/api.js';
+import { toast } from '../services/toast.js';
 
 interface InboxViewProps {
   emails: EmailMessage[];
@@ -30,6 +33,8 @@ interface InboxViewProps {
   onRefresh: () => void;
   token?: string | null;
   onConnect?: () => void;
+  isLoading?: boolean;
+  onSimulate?: (type: 'meeting' | 'support' | 'security' | 'sales') => void;
 }
 
 export const InboxView: React.FC<InboxViewProps> = ({
@@ -39,6 +44,8 @@ export const InboxView: React.FC<InboxViewProps> = ({
   onRefresh,
   token,
   onConnect,
+  isLoading = false,
+  onSimulate,
 }) => {
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
@@ -53,9 +60,8 @@ export const InboxView: React.FC<InboxViewProps> = ({
   const [isSending, setIsSending] = useState(false);
   const [isDrafting, setIsDrafting] = useState(false);
 
-  // User Confirmation Modal for Sending Email (Mandatory Workspace Skill Guideline)
+  // User Confirmation Modal for Sending Email
   const [showSendConfirmModal, setShowSendConfirmModal] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   const selectedEmail =
     emails.find((e) => e.id === selectedEmailId) || (emails.length > 0 ? emails[0] : null);
@@ -70,14 +76,16 @@ export const InboxView: React.FC<InboxViewProps> = ({
     } else {
       setEditingReply('');
     }
-    setStatusMessage(null);
   }, [selectedEmail?.id, selectedEmail?.suggestedReply?.content, selectedEmail?.suggestedReply?.tone]);
 
-  // Filtered emails
   const filteredEmails = emails.filter((e) => {
+    if (statusFilter === 'all') {
+      if (e.status === 'archived') return false;
+    } else if (e.status !== statusFilter) {
+      return false;
+    }
     if (categoryFilter !== 'all' && e.analysis?.category !== categoryFilter) return false;
     if (urgencyFilter !== 'all' && e.analysis?.urgency !== urgencyFilter) return false;
-    if (statusFilter !== 'all' && e.status !== statusFilter) return false;
     if (search.trim()) {
       const q = search.toLowerCase();
       const matchSub = e.subject.toLowerCase().includes(q);
@@ -88,20 +96,54 @@ export const InboxView: React.FC<InboxViewProps> = ({
     return true;
   });
 
+  const handleArchiveEmail = async (emailToArchive: EmailMessage, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    try {
+      await api.archiveEmail(emailToArchive.id);
+      onRefresh();
+      toast.success(`Archived "${emailToArchive.subject.slice(0, 24)}..."`, {
+        action: {
+          label: 'Undo',
+          onClick: async () => {
+            try {
+              await api.unarchiveEmail(emailToArchive.id);
+              onRefresh();
+              toast.info(`Restored "${emailToArchive.subject.slice(0, 24)}..." to Inbox`);
+            } catch (err: any) {
+              toast.error(err.message || 'Failed to restore email');
+            }
+          },
+        },
+      });
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to archive email');
+    }
+  };
+
+  const handleUnarchiveEmail = async (emailToRestore: EmailMessage, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    try {
+      await api.unarchiveEmail(emailToRestore.id);
+      onRefresh();
+      toast.success(`Restored "${emailToRestore.subject.slice(0, 24)}..." to Inbox`);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to restore email');
+    }
+  };
+
   const handleGenerateReply = async (customInstruction?: string) => {
     if (!selectedEmail) return;
     setIsGenerating(true);
-    setStatusMessage(null);
     try {
       const newReply = await api.generateReply(selectedEmail.id, {
         customInstruction: customInstruction || customPrompt,
         tone: selectedTone,
       });
       setEditingReply(newReply.content);
-      setStatusMessage({ text: 'Gemini created a context-aware email reply!', type: 'success' });
+      toast.success('Gemini synthesized a thread-aware reply draft!');
       onRefresh();
     } catch (err: any) {
-      setStatusMessage({ text: err.message || 'Generation failed', type: 'error' });
+      toast.error(err.message || 'Generation failed');
     } finally {
       setIsGenerating(false);
     }
@@ -110,20 +152,16 @@ export const InboxView: React.FC<InboxViewProps> = ({
   const handleGenerateAndSend = async () => {
     if (!selectedEmail) return;
     setIsSending(true);
-    setStatusMessage(null);
     try {
       const res = await api.generateAndSendReply(selectedEmail.id, {
         customInstruction: customPrompt,
         tone: selectedTone,
       });
       setEditingReply(res.reply.content);
-      setStatusMessage({
-        text: `Gemini generated reply and dispatched directly to ${selectedEmail.senderEmail}!`,
-        type: 'success',
-      });
+      toast.success(`Autonomous reply generated & sent to ${selectedEmail.senderEmail}!`);
       onRefresh();
     } catch (err: any) {
-      setStatusMessage({ text: err.message || 'Failed to generate and send', type: 'error' });
+      toast.error(err.message || 'Failed to generate and send');
     } finally {
       setIsSending(false);
     }
@@ -133,16 +171,12 @@ export const InboxView: React.FC<InboxViewProps> = ({
     if (!selectedEmail) return;
     setShowSendConfirmModal(false);
     setIsSending(true);
-    setStatusMessage(null);
     try {
       await api.sendReply(selectedEmail.id, editingReply);
-      setStatusMessage({
-        text: `Email successfully sent to ${selectedEmail.senderEmail} via Gmail API!`,
-        type: 'success',
-      });
+      toast.success(`Email reply dispatched to ${selectedEmail.senderEmail} via Gmail API!`);
       onRefresh();
     } catch (err: any) {
-      setStatusMessage({ text: err.message || 'Failed to send reply', type: 'error' });
+      toast.error(err.message || 'Failed to send reply');
     } finally {
       setIsSending(false);
     }
@@ -151,13 +185,17 @@ export const InboxView: React.FC<InboxViewProps> = ({
   const handleSaveDraft = async () => {
     if (!selectedEmail) return;
     setIsDrafting(true);
-    setStatusMessage(null);
     try {
       await api.createDraft(selectedEmail.id, editingReply);
-      setStatusMessage({ text: 'Draft saved to your Gmail mailbox!', type: 'success' });
+      toast.info('Draft saved to your Gmail mailbox!', {
+        action: {
+          label: 'View',
+          onClick: () => window.open('https://mail.google.com', '_blank'),
+        },
+      });
       onRefresh();
     } catch (err: any) {
-      setStatusMessage({ text: err.message || 'Failed to save draft', type: 'error' });
+      toast.error(err.message || 'Failed to save draft');
     } finally {
       setIsDrafting(false);
     }
@@ -218,14 +256,20 @@ export const InboxView: React.FC<InboxViewProps> = ({
         );
       case 'ignored':
         return (
-          <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
-            Ignored
+          <span className="text-[10px] text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
+            Ignored (Filtered)
+          </span>
+        );
+      case 'archived':
+        return (
+          <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 px-2 py-0.5 rounded-full flex items-center gap-1 border border-slate-200 dark:border-slate-700">
+            <Archive className="w-3 h-3 text-slate-400" /> Archived
           </span>
         );
       default:
         return (
-          <span className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950 px-2 py-0.5 rounded-full">
-            New
+          <span className="text-[10px] text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
+            Received
           </span>
         );
     }
@@ -233,26 +277,26 @@ export const InboxView: React.FC<InboxViewProps> = ({
 
   return (
     <div className="space-y-4">
-      {/* Gmail Disconnected Notice in Inbox */}
+      {/* Real Gmail Connection Banner if token missing */}
       {!token && (
-        <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+        <div className="bg-amber-50/90 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-xl bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 shrink-0">
-              <ShieldAlert className="w-5 h-5" />
+              <AlertCircle className="w-5 h-5" />
             </div>
             <div>
               <p className="font-bold text-amber-900 dark:text-amber-200">
-                Gmail Not Connected: Showing Simulated & Demo Messages
+                Sandbox Preview Mode Active
               </p>
-              <p className="text-amber-800 dark:text-amber-300 mt-0.5 text-[11px]">
-                To sync your real messages from your Gmail inbox, sign in with your Google account.
+              <p className="text-amber-700 dark:text-amber-400 mt-0.5">
+                Displaying pre-loaded seed inquiries. Connect your Google account to sync live inbox messages and auto-respond.
               </p>
             </div>
           </div>
           {onConnect && (
             <button
               onClick={onConnect}
-              className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs transition flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+              className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs transition-all active:scale-95 flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
             >
               <span>Connect Gmail</span>
             </button>
@@ -308,11 +352,12 @@ export const InboxView: React.FC<InboxViewProps> = ({
             onChange={(e) => setStatusFilter(e.target.value)}
             className="px-2.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-750 text-slate-700 dark:text-slate-300 focus:outline-none"
           >
-            <option value="all">All Statuses</option>
+            <option value="all">All Active</option>
             <option value="in_review">In Review Queue</option>
             <option value="replied">Replied</option>
             <option value="drafted">Draft Saved</option>
             <option value="ignored">Ignored</option>
+            <option value="archived">Archived</option>
           </select>
 
           <span className="text-[11px] text-slate-400 pl-2">
@@ -325,75 +370,148 @@ export const InboxView: React.FC<InboxViewProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 min-h-[620px]">
         {/* Left Column: Email Cards List */}
         <div className="lg:col-span-5 bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 rounded-2xl p-2 shadow-xs overflow-y-auto max-h-[750px] space-y-2">
-          {filteredEmails.map((email) => {
-            const isSelected = selectedEmail?.id === email.id;
-            return (
-              <div
-                key={email.id}
-                onClick={() => onSelectEmail(email.id)}
-                className={`p-3.5 rounded-xl cursor-pointer transition-all border text-xs ${
-                  isSelected
-                    ? 'bg-indigo-50/70 dark:bg-indigo-950/40 border-indigo-400 dark:border-indigo-600 shadow-xs'
-                    : 'bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-750 border-slate-100 dark:border-slate-700/60'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <span className="font-bold text-slate-900 dark:text-white truncate">
-                    {email.senderName || email.senderEmail}
-                  </span>
-                  <span className="text-[10px] text-slate-400 shrink-0">
-                    {new Date(email.date).toLocaleDateString([], {
-                      month: 'short',
-                      day: 'numeric',
-                    })}
-                  </span>
-                </div>
-
-                <div className="font-semibold text-slate-800 dark:text-slate-200 mb-1 truncate">
-                  {email.subject}
-                </div>
-
-                <p className="text-slate-500 dark:text-slate-400 line-clamp-2 mb-2 text-[11px]">
-                  {email.snippet}
-                </p>
-
-                {/* Metadata Tags */}
-                <div className="flex items-center justify-between gap-1.5 flex-wrap pt-1 border-t border-slate-100 dark:border-slate-700/40">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {email.analysis?.category && (
-                      <span
-                        className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border ${getCategoryColor(
-                          email.analysis.category
-                        )}`}
-                      >
-                        {email.analysis.category.replace('_', ' ')}
-                      </span>
-                    )}
-                    {email.analysis?.urgency && (
-                      <span
-                        className={`px-1.5 py-0.2 rounded-md text-[10px] font-semibold border ${getUrgencyColor(
-                          email.analysis.urgency
-                        )}`}
-                      >
-                        {email.analysis.urgency}
-                      </span>
-                    )}
-                    {email.hasAttachments && (
-                      <span className="flex items-center gap-0.5 text-[10px] text-slate-400">
-                        <Paperclip className="w-3 h-3" />
-                      </span>
-                    )}
+          {/* Skeleton Loaders */}
+          {isLoading && (
+            <div className="space-y-2">
+              {[1, 2, 3, 4].map((i) => (
+                <div
+                  key={i}
+                  className="p-3.5 rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-800/60 animate-skeleton-pulse space-y-2.5"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="w-28 h-3.5 bg-slate-200 dark:bg-slate-700 rounded" />
+                    <div className="w-12 h-3 bg-slate-200 dark:bg-slate-700 rounded" />
                   </div>
-                  <div>{getStatusBadge(email.status)}</div>
+                  <div className="w-48 h-3.5 bg-slate-200 dark:bg-slate-700 rounded" />
+                  <div className="space-y-1.5">
+                    <div className="w-full h-2.5 bg-slate-100 dark:bg-slate-700/60 rounded" />
+                    <div className="w-4/5 h-2.5 bg-slate-100 dark:bg-slate-700/60 rounded" />
+                  </div>
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800">
+                    <div className="w-20 h-3 bg-indigo-100 dark:bg-indigo-950 rounded" />
+                    <div className="w-16 h-3 bg-emerald-100 dark:bg-emerald-950 rounded" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!isLoading &&
+            filteredEmails.map((email) => {
+              const isSelected = selectedEmail?.id === email.id;
+              return (
+                <div
+                  key={email.id}
+                  onClick={() => onSelectEmail(email.id)}
+                  className={`group relative p-3.5 rounded-xl cursor-pointer transition-all border text-xs ${
+                    isSelected
+                      ? 'bg-indigo-50/70 dark:bg-indigo-950/40 border-indigo-400 dark:border-indigo-600 shadow-xs'
+                      : 'bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-750 border-slate-100 dark:border-slate-700/60'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <span className="font-bold text-slate-900 dark:text-white truncate">
+                      {email.senderName || email.senderEmail}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-slate-400 shrink-0">
+                        {new Date(email.date).toLocaleDateString([], {
+                          month: 'short',
+                          day: 'numeric',
+                        })}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="font-semibold text-slate-800 dark:text-slate-200 mb-1 truncate">
+                    {email.subject}
+                  </div>
+
+                  <p className="text-slate-500 dark:text-slate-400 line-clamp-2 mb-2 text-[11px]">
+                    {email.snippet}
+                  </p>
+
+                  {/* Metadata Tags */}
+                  <div className="flex items-center justify-between gap-1.5 flex-wrap pt-1 border-t border-slate-100 dark:border-slate-700/40">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {email.analysis?.category && (
+                        <span
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border ${getCategoryColor(
+                            email.analysis.category
+                          )}`}
+                        >
+                          {email.analysis.category.replace('_', ' ')}
+                        </span>
+                      )}
+                      {email.analysis?.urgency && (
+                        <span
+                          className={`px-1.5 py-0.2 rounded-md text-[10px] font-semibold border ${getUrgencyColor(
+                            email.analysis.urgency
+                          )}`}
+                        >
+                          {email.analysis.urgency}
+                        </span>
+                      )}
+                      {email.hasAttachments && (
+                        <span className="flex items-center gap-0.5 text-[10px] text-slate-400">
+                          <Paperclip className="w-3 h-3" />
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {email.status === 'archived' ? (
+                        <button
+                          onClick={(e) => handleUnarchiveEmail(email, e)}
+                          title="Restore email to active inbox"
+                          className="opacity-80 group-hover:opacity-100 p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all active:scale-95 cursor-pointer"
+                        >
+                          <ArchiveRestore className="w-3.5 h-3.5" />
+                        </button>
+                      ) : (
+                        <button
+                          onClick={(e) => handleArchiveEmail(email, e)}
+                          title="Archive email (with undo)"
+                          className="opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-all active:scale-95 cursor-pointer"
+                        >
+                          <Archive className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      <div>{getStatusBadge(email.status)}</div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+          {/* Polished Empty States */}
+          {!isLoading && filteredEmails.length === 0 && (
+            <div className="py-14 px-6 text-center space-y-4 relative overflow-hidden">
+              <div className="relative mx-auto w-20 h-20 flex items-center justify-center">
+                <div className="absolute inset-0 bg-indigo-100 dark:bg-indigo-950/80 rounded-3xl rotate-6 transition-transform" />
+                <div className="absolute inset-0 bg-indigo-500/10 dark:bg-indigo-500/20 rounded-3xl -rotate-6" />
+                <div className="relative z-10 w-16 h-16 rounded-2xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800/80 flex items-center justify-center shadow-lg shadow-indigo-500/10">
+                  <Inbox className="w-8 h-8 text-indigo-500" />
                 </div>
               </div>
-            );
-          })}
-
-          {filteredEmails.length === 0 && (
-            <div className="text-center py-12 text-slate-400 text-xs">
-              <Inbox className="w-8 h-8 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
-              No emails match the selected filters.
+              <div>
+                <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                  {emails.length === 0 ? 'Inbox Clean & Monitored' : 'No Matching Messages'}
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs mx-auto leading-relaxed mt-1">
+                  {emails.length === 0
+                    ? "All caught up! MailPilot's AI guard is watching your inbox 24/7. When emails arrive, they will be processed autonomously according to your reply rules."
+                    : 'No emails match your selected search query or category filters. Try adjusting your filters above.'}
+                </p>
+              </div>
+              {onSimulate && emails.length === 0 && (
+                <button
+                  onClick={() => onSimulate('meeting')}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-md shadow-indigo-600/20 transition-all active:scale-95 cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Simulate Incoming Email</span>
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -408,7 +526,28 @@ export const InboxView: React.FC<InboxViewProps> = ({
                   <h2 className="text-base font-bold text-slate-900 dark:text-white">
                     {selectedEmail.subject}
                   </h2>
-                  <div>{getStatusBadge(selectedEmail.status)}</div>
+                  <div className="flex items-center gap-2">
+                    {selectedEmail.status === 'archived' ? (
+                      <button
+                        onClick={() => handleUnarchiveEmail(selectedEmail)}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 text-xs font-semibold transition-all active:scale-95 cursor-pointer shadow-xs"
+                        title="Restore email to active inbox"
+                      >
+                        <ArchiveRestore className="w-3.5 h-3.5 text-indigo-500" />
+                        <span>Unarchive</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleArchiveEmail(selectedEmail)}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-750 text-slate-600 dark:text-slate-300 text-xs font-semibold transition-all active:scale-95 cursor-pointer shadow-xs"
+                        title="Archive email from inbox"
+                      >
+                        <Archive className="w-3.5 h-3.5 text-slate-400" />
+                        <span>Archive</span>
+                      </button>
+                    )}
+                    {getStatusBadge(selectedEmail.status)}
+                  </div>
                 </div>
 
                 <div className="flex flex-wrap items-center justify-between text-xs text-slate-500 dark:text-slate-400 gap-2">
@@ -460,54 +599,22 @@ export const InboxView: React.FC<InboxViewProps> = ({
                   </div>
 
                   {selectedEmail.analysis.is_sensitive && (
-                    <div className="mt-2 p-2 rounded-lg bg-rose-50 dark:bg-rose-950/60 border border-rose-200 text-rose-800 dark:text-rose-300 flex items-center gap-2 font-medium">
-                      <ShieldAlert className="w-4 h-4 shrink-0 text-rose-600" />
+                    <div className="p-2 rounded-lg bg-rose-100/70 dark:bg-rose-950/80 border border-rose-200 dark:border-rose-900/60 text-rose-800 dark:text-rose-300 flex items-center gap-1.5 mt-2">
+                      <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
                       <span>
-                        Sensitive Content Detected: {selectedEmail.analysis.sensitivity_reason || 'Auto-reply strictly prohibited.'}
+                        <strong>Safety Guardrail Active:</strong>{' '}
+                        {selectedEmail.analysis.sensitivity_reason ||
+                          'Sensitive financial or security document. Auto-send held for safety.'}
                       </span>
                     </div>
                   )}
                 </div>
               )}
 
-              {/* Email Plain Text Content */}
-              <div className="bg-slate-50 dark:bg-slate-900/60 rounded-xl p-4 border border-slate-200/70 dark:border-slate-750 text-xs text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-relaxed max-h-56 overflow-y-auto font-sans">
+              {/* Original Message Body */}
+              <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-100 dark:border-slate-750 text-xs leading-relaxed max-h-56 overflow-y-auto whitespace-pre-wrap font-sans text-slate-800 dark:text-slate-200">
                 {selectedEmail.bodyPlain || selectedEmail.snippet}
               </div>
-
-              {/* Attachments if any */}
-              {selectedEmail.hasAttachments && selectedEmail.attachmentNames && selectedEmail.attachmentNames.length > 0 && (
-                <div className="flex items-center gap-2 flex-wrap text-xs text-slate-600 dark:text-slate-300">
-                  <span className="font-semibold text-slate-500">Attachments:</span>
-                  {selectedEmail.attachmentNames.map((name, idx) => (
-                    <span
-                      key={idx}
-                      className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center gap-1"
-                    >
-                      <Paperclip className="w-3 h-3 text-slate-400" />
-                      {name}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {/* Status Banner (e.g. success / error) */}
-              {statusMessage && (
-                <div
-                  className={`p-3 rounded-xl text-xs flex items-center gap-2 ${
-                    statusMessage.type === 'success'
-                      ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200'
-                      : 'bg-rose-50 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200'
-                  }`}
-                >
-                  {statusMessage.type === 'success' ? (
-                    <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
-                  ) : (
-                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
-                  )}
-                  <span>{statusMessage.text}</span>
-                </div>
-              )}
 
               {/* AI Reply Studio / Editor */}
               <div className="border-t border-slate-100 dark:border-slate-700/60 pt-4 space-y-3.5">
@@ -537,11 +644,11 @@ export const InboxView: React.FC<InboxViewProps> = ({
                     <button
                       onClick={handleGenerateAndSend}
                       disabled={isSending || isGenerating}
-                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white text-xs font-bold shadow-md shadow-indigo-600/30 flex items-center gap-2 transition disabled:opacity-50 cursor-pointer"
+                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white text-xs font-bold shadow-md shadow-indigo-600/30 flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
                       title="Read message, generate tailored response with Gemini, and dispatch immediately without asking permission"
                     >
                       <Zap className="w-4 h-4 text-amber-300" />
-                      <span>{isSending ? 'Auto-Sending via Gmail...' : '⚡ Auto-Reply & Send (No Permission Needed)'}</span>
+                      <span>{isSending ? 'Auto-Sending via Gmail...' : '⚡ Auto-Reply & Send (Instant)'}</span>
                     </button>
                   </div>
 
@@ -555,7 +662,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                         <button
                           key={t}
                           onClick={() => setSelectedTone(t)}
-                          className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold capitalize transition cursor-pointer ${
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold capitalize transition-all active:scale-95 cursor-pointer ${
                             selectedTone === t
                               ? 'bg-indigo-600 text-white shadow-xs'
                               : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-750'
@@ -569,7 +676,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                     <button
                       onClick={() => handleGenerateReply()}
                       disabled={isGenerating || isSending}
-                      className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                      className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 flex items-center gap-1.5 disabled:opacity-50 transition-all active:scale-95 cursor-pointer"
                     >
                       <RotateCw className={`w-3.5 h-3.5 ${isGenerating ? 'animate-spin' : ''}`} />
                       <span>{editingReply ? 'Re-draft with Gemini' : 'Draft with Gemini'}</span>
@@ -592,7 +699,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                     rows={6}
                     value={editingReply}
                     onChange={(e) => setEditingReply(e.target.value)}
-                    placeholder="Click 'Generate with Gemini & Send' or 'Draft with Gemini' above to generate an intelligent reply..."
+                    placeholder="Click 'Auto-Reply & Send' or 'Draft with Gemini' above to generate an intelligent reply..."
                     className="w-full p-3.5 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 leading-relaxed font-sans"
                   />
                 </div>
@@ -612,7 +719,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                   <button
                     onClick={() => handleGenerateReply(customPrompt)}
                     disabled={isGenerating || !customPrompt.trim()}
-                    className="px-3.5 py-2 rounded-xl bg-indigo-600 text-white font-semibold text-xs hover:bg-indigo-700 disabled:opacity-50 transition cursor-pointer shrink-0"
+                    className="px-3.5 py-2 rounded-xl bg-indigo-600 text-white font-semibold text-xs hover:bg-indigo-700 disabled:opacity-50 transition-all active:scale-95 cursor-pointer shrink-0"
                   >
                     Generate Draft
                   </button>
@@ -623,7 +730,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                   <button
                     onClick={handleSaveDraft}
                     disabled={isDrafting || !editingReply}
-                    className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-750 text-xs font-semibold flex items-center gap-1.5 transition disabled:opacity-50 shadow-xs cursor-pointer"
+                    className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-750 text-xs font-semibold flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-50 shadow-xs cursor-pointer"
                   >
                     <FileEdit className="w-3.5 h-3.5 text-slate-500" />
                     <span>{isDrafting ? 'Saving Draft...' : 'Save Draft in Gmail'}</span>
@@ -633,8 +740,8 @@ export const InboxView: React.FC<InboxViewProps> = ({
                     <button
                       onClick={handleSendConfirmed}
                       disabled={isSending || !editingReply}
-                      title="Send this email reply immediately without confirmation prompt"
-                      className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/30 flex items-center gap-2 transition disabled:opacity-50 cursor-pointer"
+                      title="Send this email reply immediately via Gmail"
+                      className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/30 flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
                     >
                       <Send className="w-3.5 h-3.5" />
                       <span>{isSending ? 'Sending via Gmail...' : 'Send Reply via Gmail (Instant)'}</span>
@@ -644,16 +751,37 @@ export const InboxView: React.FC<InboxViewProps> = ({
               </div>
             </div>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-slate-400 py-20 text-center">
-              <Inbox className="w-12 h-12 text-slate-300 dark:text-slate-600 mb-2" />
-              <p className="text-sm font-semibold">Select an email to view conversation</p>
-              <p className="text-xs">Or click "Simulate Incoming" to test triage.</p>
+            <div className="flex-1 flex flex-col items-center justify-center text-slate-400 py-20 text-center space-y-3 relative overflow-hidden">
+              <div className="relative mx-auto w-20 h-20 flex items-center justify-center">
+                <div className="absolute inset-0 bg-emerald-100 dark:bg-emerald-950/80 rounded-3xl rotate-6 transition-transform" />
+                <div className="absolute inset-0 bg-emerald-500/10 dark:bg-emerald-500/20 rounded-3xl -rotate-6" />
+                <div className="relative z-10 w-16 h-16 rounded-2xl bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800/80 flex items-center justify-center shadow-lg shadow-emerald-500/10">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-500" />
+                </div>
+              </div>
+              <div>
+                <p className="text-base font-bold text-slate-800 dark:text-slate-100">
+                  All Caught Up!
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto leading-relaxed mt-1">
+                  MailPilot's AI guard is watching your inbox 24/7. Select an email from the left feed to inspect message context, or simulate an incoming test inquiry.
+                </p>
+              </div>
+              {onSimulate && (
+                <button
+                  onClick={() => onSimulate('meeting')}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-md shadow-indigo-600/20 transition-all active:scale-95 cursor-pointer mt-1"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Simulate Incoming Email</span>
+                </button>
+              )}
             </div>
           )}
         </div>
       </div>
 
-      {/* User Confirmation Dialog for Sending Email (Mandatory Google Workspace Pattern) */}
+      {/* User Confirmation Dialog for Sending Email */}
       {showSendConfirmModal && selectedEmail && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl">
@@ -683,13 +811,13 @@ export const InboxView: React.FC<InboxViewProps> = ({
             <div className="flex items-center justify-end gap-3">
               <button
                 onClick={() => setShowSendConfirmModal(false)}
-                className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold transition"
+                className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold transition-all active:scale-95 cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSendConfirmed}
-                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/30 transition flex items-center gap-1.5"
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/30 transition-all active:scale-95 cursor-pointer flex items-center gap-1.5"
               >
                 <Send className="w-3.5 h-3.5" />
                 Confirm & Send

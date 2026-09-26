@@ -227,6 +227,30 @@ app.get('/api/emails/:id', (req: Request, res: Response) => {
   res.json({ message, thread });
 });
 
+// Archive & Unarchive Email
+app.post('/api/emails/:id/archive', (req: Request, res: Response) => {
+  const message = db.getMessage(req.params.id);
+  if (!message) return res.status(404).json({ error: 'Message not found' });
+  message.status = 'archived';
+  message.labels = (message.labels || []).filter((l) => l !== 'INBOX');
+  db.upsertMessage(message);
+  db.logActivity('rule_triggered', message.sender, message.subject, `Archived email "${message.subject}"`);
+  res.json({ success: true, message });
+});
+
+app.post('/api/emails/:id/unarchive', (req: Request, res: Response) => {
+  const message = db.getMessage(req.params.id);
+  if (!message) return res.status(404).json({ error: 'Message not found' });
+  message.status = message.suggestedReply ? 'in_review' : 'analyzed';
+  if (!message.labels) message.labels = [];
+  if (!message.labels.includes('INBOX')) {
+    message.labels.push('INBOX');
+  }
+  db.upsertMessage(message);
+  db.logActivity('rule_triggered', message.sender, message.subject, `Restored email "${message.subject}" to Inbox`);
+  res.json({ success: true, message });
+});
+
 // Gmail Sync: Poll / Fetch latest incoming messages
 app.post('/api/gmail/sync', async (req: Request, res: Response) => {
   const token = getBearerToken(req) || backgroundDaemon.getActiveToken().token;

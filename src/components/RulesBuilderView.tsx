@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { ReplyRule, RuleCondition, ActionType, ReplyTone } from '../../server/types.js';
 import { api } from '../services/api.js';
+import { toast } from '../services/toast.js';
 
 interface RulesBuilderViewProps {
   rules: ReplyRule[];
@@ -25,7 +26,6 @@ export const RulesBuilderView: React.FC<RulesBuilderViewProps> = ({
   onRefresh,
 }) => {
   const [showAddModal, setShowAddModal] = useState(false);
-  const [notification, setNotification] = useState<string | null>(null);
 
   // New Rule Form State
   const [name, setName] = useState('');
@@ -78,16 +78,17 @@ export const RulesBuilderView: React.FC<RulesBuilderViewProps> = ({
       setName('');
       setDescription('');
       setConditions([{ field: 'category', operator: 'equals', value: 'meeting_request' }]);
-      setNotification(`Rule "${name}" created successfully!`);
+      toast.success(`Rule "${name}" created and active!`);
       onRefresh();
     } catch (err: any) {
-      setNotification(`Error creating rule: ${err.message}`);
+      toast.error(`Error creating rule: ${err.message}`);
     }
   };
 
   const handleToggleRule = async (rule: ReplyRule) => {
     try {
       await api.updateRule(rule.id, { enabled: !rule.enabled });
+      toast.info(`Rule "${rule.name}" ${!rule.enabled ? 'activated' : 'paused'}`);
       onRefresh();
     } catch (err) {
       console.error('Failed to toggle rule', err);
@@ -95,12 +96,36 @@ export const RulesBuilderView: React.FC<RulesBuilderViewProps> = ({
   };
 
   const handleDeleteRule = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this rule?')) return;
+    const target = rules.find((r) => r.id === id);
     try {
       await api.deleteRule(id);
       onRefresh();
-    } catch (err) {
-      console.error('Failed to delete rule', err);
+      toast.warning(`Rule "${target?.name || 'Rule'}" deleted`, {
+        action: {
+          label: 'Undo',
+          onClick: async () => {
+            if (target) {
+              try {
+                await api.createRule({
+                  name: target.name,
+                  description: target.description,
+                  priority: target.priority,
+                  conditions: target.conditions,
+                  conditionLogic: target.conditionLogic,
+                  action: target.action,
+                  overrideTone: target.overrideTone,
+                  addSignature: target.addSignature,
+                  enabled: target.enabled,
+                });
+                onRefresh();
+                toast.success(`Rule "${target.name}" restored!`);
+              } catch {}
+            }
+          },
+        },
+      });
+    } catch (err: any) {
+      toast.error(`Failed to delete rule: ${err.message}`);
     }
   };
 
@@ -151,21 +176,12 @@ export const RulesBuilderView: React.FC<RulesBuilderViewProps> = ({
 
         <button
           onClick={() => setShowAddModal(true)}
-          className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-md shadow-indigo-600/20 flex items-center gap-1.5 transition self-start sm:self-auto"
+          className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-md shadow-indigo-600/20 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" />
           Add Smart Rule
         </button>
       </div>
-
-      {notification && (
-        <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200 text-xs flex items-center justify-between border border-emerald-200">
-          <span>{notification}</span>
-          <button onClick={() => setNotification(null)} className="font-bold">
-            &times;
-          </button>
-        </div>
-      )}
 
       {/* Rules Cards List */}
       <div className="space-y-3">

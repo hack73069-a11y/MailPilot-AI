@@ -119,7 +119,7 @@ export interface EmailMessage {
   processed: boolean;
   analysis?: AIAnalysis;
   suggestedReply?: GeneratedReply;
-  status: 'new' | 'analyzed' | 'in_review' | 'replied' | 'drafted' | 'ignored';
+  status: 'new' | 'analyzed' | 'in_review' | 'replied' | 'drafted' | 'ignored' | 'archived';
 }
 
 export interface EmailThread {

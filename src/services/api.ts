@@ -108,6 +108,16 @@ export const api = {
     return res.json();
   },
 
+  async archiveEmail(id: string): Promise<{ success: boolean; message: EmailMessage }> {
+    const res = await fetchWithAuth(`/api/emails/${id}/archive`, { method: 'POST' });
+    return res.json();
+  },
+
+  async unarchiveEmail(id: string): Promise<{ success: boolean; message: EmailMessage }> {
+    const res = await fetchWithAuth(`/api/emails/${id}/unarchive`, { method: 'POST' });
+    return res.json();
+  },
+
   async syncGmail(): Promise<{ syncedCount: number; results: any[] }> {
     const res = await fetchWithAuth('/api/gmail/sync', { method: 'POST' });
     if (!res.ok) {

@@ -30,6 +30,7 @@ import {
 } from '../services/auth.js';
 import { api } from '../services/api.js';
 import { ReplyMode } from '../../server/types.js';
+import { toast } from '../services/toast.js';
 
 interface HeaderProps {
   user: any;
@@ -74,10 +75,12 @@ export const Header: React.FC<HeaderProps> = ({
 
   const handleModeSelect = (newMode: ReplyMode) => {
     onModeChange(newMode);
+    toast.info(`Auto-reply mode switched to: ${newMode === 'automatic' ? 'Autonomous Mode' : newMode === 'approval' ? 'Review Queue' : 'Manual Mode'}`);
   };
 
   const confirmAutoMode = () => {
     onModeChange('automatic');
+    toast.info('Autonomous Mode active: direct AI replies will be dispatched without asking permission');
     setShowAutoWarningModal(false);
   };
 
@@ -87,13 +90,14 @@ export const Header: React.FC<HeaderProps> = ({
     try {
       const result = await googleSignIn();
       if (result) {
+        toast.success(`Connected as ${result.user.displayName || result.user.email}!`);
         if (onSignInSuccess) {
           onSignInSuccess(result.user, result.accessToken);
         }
       }
     } catch (err: any) {
       console.error('Sign-in failed:', err);
-      setAuthError(err.message || 'Failed to complete Google Sign-in. Please try again.');
+      toast.error(err.message || 'Failed to complete Google Sign-in.');
     } finally {
       setIsLoggingIn(false);
     }
@@ -102,6 +106,7 @@ export const Header: React.FC<HeaderProps> = ({
   const handleSignOut = async () => {
     await logout();
     setShowAccountSwitcher(false);
+    toast.info('Signed out of Gmail.');
     onRefresh();
   };
 
@@ -115,8 +120,9 @@ export const Header: React.FC<HeaderProps> = ({
         await switchConnectedAccount(targetEmail);
         onRefresh();
       }
+      toast.success(`Switched active inbox to ${targetEmail}`);
     } catch (err: any) {
-      setAuthError(`Failed to switch account: ${err.message}`);
+      toast.error(`Failed to switch account: ${err.message}`);
     } finally {
       setSwitchingEmail(null);
     }
@@ -126,15 +132,21 @@ export const Header: React.FC<HeaderProps> = ({
     e.stopPropagation();
     try {
       await removeConnectedAccount(targetEmail);
+      toast.info(`Account ${targetEmail} removed from switcher.`);
       onRefresh();
     } catch (err: any) {
-      setAuthError(`Failed to remove account: ${err.message}`);
+      toast.error(`Failed to remove account: ${err.message}`);
     }
   };
 
   const handleAddAnotherAccount = async () => {
     setShowAccountSwitcher(false);
     await handleSignIn();
+  };
+
+  const handleSimulateWithToast = (type: 'meeting' | 'sales' | 'security') => {
+    onSimulate(type);
+    toast.info(`Simulated incoming ${type} email. Processing through AI triage pipeline.`);
   };
 
   return (
@@ -207,7 +219,7 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={onRefresh}
               disabled={isSyncing}
               title="Sync latest emails from Gmail API"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-750 text-xs font-medium transition shadow-xs disabled:opacity-50"
+              className="ripple-feedback flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-750 text-xs font-medium transition-all active:scale-95 cursor-pointer shadow-xs disabled:opacity-50"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-indigo-600' : ''}`} />
               <span className="hidden sm:inline">{isSyncing ? 'Syncing...' : 'Sync Gmail'}</span>
@@ -217,7 +229,7 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="relative">
               <button
                 onClick={() => setShowSimulateMenu(!showSimulateMenu)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/70 dark:border-indigo-800 text-xs font-medium hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition"
+                className="ripple-feedback flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/70 dark:border-indigo-800 text-xs font-medium hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-all active:scale-95 cursor-pointer shadow-2xs"
               >
                 <Zap className="w-3.5 h-3.5 text-indigo-500" />
                 <span className="hidden sm:inline">Simulate Incoming</span>
@@ -231,8 +243,8 @@ export const Header: React.FC<HeaderProps> = ({
                     Simulate Live Event
                   </p>
                   <button
-                    onClick={() => onSimulate('meeting')}
-                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center justify-between"
+                    onClick={() => handleSimulateWithToast('meeting')}
+                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center justify-between transition-all active:scale-95 cursor-pointer"
                   >
                     <span>📅 Meeting Request</span>
                     <span className="text-[10px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950 px-1.5 py-0.5 rounded">
@@ -240,8 +252,8 @@ export const Header: React.FC<HeaderProps> = ({
                     </span>
                   </button>
                   <button
-                    onClick={() => onSimulate('sales')}
-                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center justify-between"
+                    onClick={() => handleSimulateWithToast('sales')}
+                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center justify-between transition-all active:scale-95 cursor-pointer"
                   >
                     <span>💼 Enterprise Inquiry</span>
                     <span className="text-[10px] text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950 px-1.5 py-0.5 rounded">
@@ -249,8 +261,8 @@ export const Header: React.FC<HeaderProps> = ({
                     </span>
                   </button>
                   <button
-                    onClick={() => onSimulate('security')}
-                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center justify-between"
+                    onClick={() => handleSimulateWithToast('security')}
+                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center justify-between transition-all active:scale-95 cursor-pointer"
                   >
                     <span>🛡️ Security Alert (Sensitive)</span>
                     <span className="text-[10px] text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950 px-1.5 py-0.5 rounded">
