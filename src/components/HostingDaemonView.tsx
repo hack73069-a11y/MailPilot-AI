@@ -201,6 +201,20 @@ WantedBy=multi-user.target`;
         </div>
       )}
 
+      {daemonStatus?.lastError && (
+        <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>
+              <strong>Daemon Warning:</strong> {daemonStatus.lastError}
+            </span>
+          </div>
+          <span className="text-[11px] text-amber-700 dark:text-amber-300 shrink-0 font-medium">
+            Click "Connect Gmail" in the top bar to refresh credentials.
+          </span>
+        </div>
+      )}
+
       {/* Live Daemon Status Dashboard Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Daemon State */}

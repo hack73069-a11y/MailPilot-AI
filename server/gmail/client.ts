@@ -41,7 +41,21 @@ export class GmailClient {
 
     if (!res.ok) {
       const errText = await res.text();
-      throw new Error(`Gmail API error (${res.status}): ${errText}`);
+      let isAuthError = res.status === 401;
+      try {
+        const parsed = JSON.parse(errText);
+        if (parsed.error?.errors?.[0]?.reason === 'authError' || parsed.error?.code === 401) {
+          isAuthError = true;
+        }
+      } catch {}
+      const err: any = new Error(
+        isAuthError
+          ? 'Gmail session expired or invalid credentials (authError). Please reconnect your Google account.'
+          : `Gmail API error (${res.status}): ${errText}`
+      );
+      err.status = res.status;
+      err.isAuthError = isAuthError;
+      throw err;
     }
 
     return res.json();
@@ -67,7 +81,26 @@ export class GmailClient {
 
     if (!res.ok) {
       const errText = await res.text();
-      throw new Error(`Failed to list Gmail messages: ${errText}`);
+      let isAuthError = res.status === 401;
+      let errorDetail = errText;
+      try {
+        const parsed = JSON.parse(errText);
+        if (parsed.error?.errors?.[0]?.reason === 'authError' || parsed.error?.code === 401) {
+          isAuthError = true;
+        }
+        if (parsed.error?.message) {
+          errorDetail = parsed.error.message;
+        }
+      } catch {}
+
+      const err: any = new Error(
+        isAuthError
+          ? `Gmail session expired or invalid credentials (authError). Please reconnect your Google account.`
+          : `Failed to list Gmail messages (${res.status}): ${errorDetail}`
+      );
+      err.status = res.status;
+      err.isAuthError = isAuthError;
+      throw err;
     }
 
     return res.json();

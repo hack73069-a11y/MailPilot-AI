@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   FileText,
   Sliders,
+  Globe,
 } from 'lucide-react';
 import { UserPreferences, ReplyTone } from '../../server/types.js';
 import { api } from '../services/api.js';
@@ -155,6 +156,48 @@ export const PersonalityView: React.FC<PersonalityViewProps> = ({
               placeholder="e.g. Write like me. Keep emails under 3 sentences. Avoid generic greetings. Never commit to contract deliverables."
               className="w-full p-3 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 leading-relaxed font-sans"
             />
+          </div>
+
+          {/* Multilingual & Language Handling */}
+          <div className="bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 rounded-2xl p-5 shadow-xs space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Globe className="w-4 h-4 text-indigo-500" />
+                Language & Multilingual Replies
+              </h2>
+              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
+                Auto-Detection Active
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              MailPilot AI detects the language of every inbound message and automatically generates replies in that exact language (Spanish, French, German, Japanese, Chinese, Arabic, Portuguese, etc.).
+            </p>
+            <div className="text-xs space-y-1">
+              <label className="block font-semibold text-slate-700 dark:text-slate-300">
+                Default / Fallback Language
+              </label>
+              <select
+                value={form.language || 'Auto-detect'}
+                onChange={(e) => setForm({ ...form, language: e.target.value })}
+                className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
+              >
+                <option value="Auto-detect">Always match the sender's language (Auto-Detect 100+ languages)</option>
+                <option value="English">English</option>
+                <option value="Spanish">Spanish (Español)</option>
+                <option value="French">French (Français)</option>
+                <option value="German">German (Deutsch)</option>
+                <option value="Portuguese">Portuguese (Português)</option>
+                <option value="Italian">Italian (Italiano)</option>
+                <option value="Dutch">Dutch (Nederlands)</option>
+                <option value="Japanese">Japanese (日本語)</option>
+                <option value="Chinese (Simplified)">Chinese (Simplified - 简体中文)</option>
+                <option value="Chinese (Traditional)">Chinese (Traditional - 繁體中文)</option>
+                <option value="Korean">Korean (한국어)</option>
+                <option value="Arabic">Arabic (العربية)</option>
+                <option value="Hindi">Hindi (हिन्दी)</option>
+                <option value="Russian">Russian (Русский)</option>
+              </select>
+            </div>
           </div>
 
           {/* Few-Shot Style Mimicry Samples */}

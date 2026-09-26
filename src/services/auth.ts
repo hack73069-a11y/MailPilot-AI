@@ -90,6 +90,24 @@ export const initAuth = (
   });
 };
 
+export const autoReconnectSession = async (): Promise<{ user: User; accessToken: string } | null> => {
+  if (isSigningIn) return null;
+  try {
+    return await googleSignIn();
+  } catch (err: any) {
+    console.debug('Automatic reconnect attempt postponed:', err.message);
+    return null;
+  }
+};
+
+export const clearExpiredSession = () => {
+  cachedAccessToken = null;
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem(TOKEN_KEY);
+  }
+  notifySubscribers();
+};
+
 export const googleSignIn = async (): Promise<{ user: User; accessToken: string } | null> => {
   try {
     isSigningIn = true;

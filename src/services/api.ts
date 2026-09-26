@@ -112,7 +112,10 @@ export const api = {
     const res = await fetchWithAuth('/api/gmail/sync', { method: 'POST' });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'Sync failed' }));
-      throw new Error(err.error || 'Failed to sync emails');
+      const customErr: any = new Error(err.error || 'Failed to sync emails');
+      customErr.status = res.status;
+      customErr.isAuthError = res.status === 401 || err.isAuthError || err.code === 'authError';
+      throw customErr;
     }
     return res.json();
   },

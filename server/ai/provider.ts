@@ -307,12 +307,17 @@ CRITICAL SAFETY RULES:
     let safetyPassed = true;
     let safetyNotes = 'Standard reply generated within parameters.';
 
-    const prompt = `You are MailPilot AI, a personalized executive email assistant.
+    const prompt = `You are MailPilot AI, a personalized executive email assistant powered by Gemini.
 Your goal is to write a helpful, human, accurate, and context-aware email reply.
+
+LANGUAGE & MULTILINGUAL INSTRUCTIONS:
+- CRITICAL: Automatically detect the primary language of the incoming email / conversation thread.
+- If the sender wrote in Spanish, French, German, Japanese, Chinese, Arabic, Portuguese, Hindi, Italian, Dutch, Russian, or ANY other language, reply in that EXACT SAME language with natural native fluency and correct idioms, unless the user's custom instruction explicitly mandates a specific translation.
+- If the incoming email is multilingual or unclear, use the configured preference: ${preferences.language || 'Match sender language / English'}.
 
 USER WRITING SETTINGS:
 - Desired Tone: ${preferences.defaultTone}
-- Language: ${preferences.language || 'English'}
+- Default/Fallback Language: ${preferences.language || 'Auto-detect incoming language'}
 - Custom Instructions: ${preferences.customInstructions || 'None'}
 ${customInstruction ? `- One-off Instruction for this reply: ${customInstruction}` : ''}
 ${examplesStr}
@@ -335,11 +340,12 @@ ${threadContextStr || email.bodyPlain || email.snippet}
 
 REPLY GENERATION RULES:
 1. Directly answer questions raised in the latest email.
-2. Maintain natural human cadence. Avoid generic robot buzzwords like "I hope this email finds you well" unless instructed.
-3. NEVER fabricate facts, commitments, legal promises, or financial transactions.
-4. If a date is requested and user did not specify availability, offer a polite placeholder or ask for 2 candidate times.
-5. If after-hours acknowledgement is active, kindly inform them of working hours.
-6. Write ONLY the email body ready to send. No meta-commentary, no subject line tag.
+2. Match the exact language of the incoming email (fluent native tone).
+3. Maintain natural human cadence. Avoid generic robot buzzwords like "I hope this email finds you well" unless instructed.
+4. NEVER fabricate facts, commitments, legal promises, or financial transactions.
+5. If a date is requested and user did not specify availability, offer a polite placeholder or ask for 2 candidate times.
+6. If after-hours acknowledgement is active, kindly inform them of working hours (translated appropriately).
+7. Write ONLY the email body ready to send. No meta-commentary, no subject line tag.
 `;
 
     const response = await this.executeGeminiCall(async (model) => {

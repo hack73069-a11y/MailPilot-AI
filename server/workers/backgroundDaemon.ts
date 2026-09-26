@@ -100,9 +100,15 @@ class BackgroundDaemon {
 
       db.recordWorkerCycle(repliesDispatched);
     } catch (err: any) {
-      this.lastError = err.message || 'Error communicating with Gmail API';
-      if (err.message && err.message.includes('401')) {
-        console.warn('[Daemon] Gmail token returned 401 Unauthorized. Token may require re-auth.');
+      const isAuthErr = err.isAuthError || (err.message && (err.message.includes('authError') || err.message.includes('401') || err.message.includes('expired')));
+      this.lastError = isAuthErr
+        ? 'Gmail session expired or invalid credentials (authError). Please reconnect your Google account.'
+        : err.message || 'Error communicating with Gmail API';
+
+      if (isAuthErr) {
+        // Clear expired in-memory token to avoid repeating failed cycles with a dead token
+        db.clearSavedToken();
+        console.warn('[Daemon] Gmail access token expired or invalid (authError). Daemon waiting for reconnection.');
       } else {
         console.warn('[Daemon] Cycle warning:', err.message);
       }

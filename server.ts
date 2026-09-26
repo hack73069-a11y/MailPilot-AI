@@ -211,10 +211,12 @@ app.get('/api/emails/:id', (req: Request, res: Response) => {
 
 // Gmail Sync: Poll / Fetch latest incoming messages
 app.post('/api/gmail/sync', async (req: Request, res: Response) => {
-  const token = getBearerToken(req);
+  const token = getBearerToken(req) || backgroundDaemon.getActiveToken().token;
   if (!token) {
     return res.status(401).json({
-      error: 'Active Gmail access token required in Authorization header.',
+      error: 'Active Gmail access token required. Please click Connect Gmail to authenticate.',
+      isAuthError: true,
+      code: 'authError',
     });
   }
 
@@ -239,8 +241,14 @@ app.post('/api/gmail/sync', async (req: Request, res: Response) => {
       results: processedResults,
     });
   } catch (err: any) {
-    console.error('Gmail sync failed:', err);
-    res.status(500).json({ error: err.message || 'Failed to sync emails from Gmail' });
+    console.error('Gmail sync failed:', err.message || err);
+    const isAuthError = err.isAuthError || err.status === 401 || (err.message && err.message.includes('authError'));
+    const statusCode = isAuthError ? 401 : (err.status || 500);
+    res.status(statusCode).json({
+      error: err.message || 'Failed to sync emails from Gmail',
+      isAuthError: Boolean(isAuthError),
+      code: isAuthError ? 'authError' : 'syncError',
+    });
   }
 });
 

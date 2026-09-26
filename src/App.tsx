@@ -10,7 +10,15 @@ import { SafetyView } from './components/SafetyView.js';
 import { DiagnosticsView } from './components/DiagnosticsView.js';
 import { HostingDaemonView } from './components/HostingDaemonView.js';
 import { SettingsView } from './components/SettingsView.js';
-import { initAuth, subscribeAuth, getCurrentUser, getAccessToken, googleSignIn } from './services/auth.js';
+import {
+  initAuth,
+  subscribeAuth,
+  getCurrentUser,
+  getAccessToken,
+  googleSignIn,
+  autoReconnectSession,
+  clearExpiredSession,
+} from './services/auth.js';
 import { api } from './services/api.js';
 import {
   EmailMessage,
@@ -47,6 +55,7 @@ export default function App() {
   const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [syncAuthError, setSyncAuthError] = useState<string | null>(null);
 
   // Theme setup with class, attribute, and storage synchronization
   useEffect(() => {
@@ -123,7 +132,7 @@ export default function App() {
     refreshAllData();
   }, [refreshAllData]);
 
-  // Autonomous background auto-reply loop:
+  // Autonomous background auto-reply loop with automatic reconnection:
   // Automatically syncs Gmail every 30 seconds when authenticated to process and reply to new emails
   useEffect(() => {
     if (!token) return;
@@ -134,9 +143,26 @@ export default function App() {
         if (activeToken) {
           await api.syncGmail();
           await refreshAllData();
+          setSyncAuthError(null);
         }
-      } catch (err) {
-        console.debug('Background auto-sync cycle:', err);
+      } catch (err: any) {
+        if (err.isAuthError || err.status === 401 || (err.message && err.message.includes('authError'))) {
+          // Attempt automatic background reconnection
+          try {
+            const reconnected = await autoReconnectSession();
+            if (reconnected?.accessToken) {
+              setUser(reconnected.user);
+              setToken(reconnected.accessToken);
+              setSyncAuthError(null);
+              await api.syncGmail();
+              await refreshAllData();
+              return;
+            }
+          } catch {}
+          setSyncAuthError('Gmail session expired. Click Reconnect Gmail to renew credentials.');
+        } else {
+          console.debug('Background auto-sync cycle notice:', err.message);
+        }
       }
     }, 30000);
 
@@ -155,17 +181,34 @@ export default function App() {
     }
   };
 
-  // Sync Gmail
+  // Sync Gmail with automatic reconnection
   const handleSyncGmail = async (overrideToken?: string) => {
     setIsSyncing(true);
     try {
       const activeToken = overrideToken || token || (await getAccessToken());
       if (activeToken) {
         await api.syncGmail();
+        setSyncAuthError(null);
       }
       await refreshAllData();
     } catch (err: any) {
-      console.error('Sync failed:', err);
+      if (err.isAuthError || err.status === 401 || (err.message && err.message.includes('authError'))) {
+        // Attempt automatic reconnection
+        try {
+          const reconnected = await autoReconnectSession();
+          if (reconnected?.accessToken) {
+            setUser(reconnected.user);
+            setToken(reconnected.accessToken);
+            setSyncAuthError(null);
+            await api.syncGmail();
+            await refreshAllData();
+            return;
+          }
+        } catch {}
+        setSyncAuthError('Gmail access token is expired or unauthorized. Click "Reconnect Gmail" to renew your session.');
+      } else {
+        console.warn('Sync notice:', err.message);
+      }
       // Fallback refresh
       await refreshAllData();
     } finally {
@@ -250,6 +293,35 @@ export default function App() {
         onSelectTab={(tab) => setCurrentTab(tab)}
         pendingApprovalsCount={queue.length}
       />
+
+      {/* Session Expired / Auth Error Notification Banner */}
+      {syncAuthError && (
+        <div className="bg-amber-50 dark:bg-amber-950/80 border-b border-amber-200 dark:border-amber-800 px-4 py-2.5 text-xs text-amber-900 dark:text-amber-200">
+          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping shrink-0" />
+              <span className="font-medium">
+                <strong>Gmail Session Update Needed:</strong> {syncAuthError}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={handleDirectSignIn}
+                className="px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs transition cursor-pointer shadow-xs"
+              >
+                Reconnect Gmail
+              </button>
+              <button
+                onClick={() => setSyncAuthError(null)}
+                className="text-amber-700 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-100 font-bold px-1.5 py-0.5 rounded cursor-pointer"
+                title="Dismiss"
+              >
+                &times;
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6">
