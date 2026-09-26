@@ -29,6 +29,15 @@ function getBearerToken(req: Request): string | undefined {
   return authHeader.substring(7).trim();
 }
 
+// Helper to determine if an email or thread is simulated / local testing data
+function isSimulatedMessage(id?: string, threadId?: string): boolean {
+  if (!id && !threadId) return false;
+  return Boolean(
+    (id && (id.startsWith('sim-') || id.startsWith('msg-seed') || id.startsWith('seed-'))) ||
+    (threadId && (threadId.startsWith('sim-') || threadId.startsWith('thread-')))
+  );
+}
+
 /* =========================================================================
    API ROUTES
    ========================================================================= */
@@ -402,7 +411,7 @@ app.post('/api/emails/:id/generate-and-send', async (req: Request, res: Response
   db.incrementRepliesGenerated();
 
   // 3. Dispatch reply via Gmail API
-  if (token && !message.id.startsWith('sim-')) {
+  if (token && !isSimulatedMessage(message.id, message.threadId)) {
     try {
       await gmailClient.sendReply(token, {
         threadId: message.threadId,
@@ -452,7 +461,7 @@ app.post('/api/emails/:id/send-reply', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Reply content cannot be empty.' });
   }
 
-  if (token) {
+  if (token && !isSimulatedMessage(message.id, message.threadId)) {
     try {
       await gmailClient.sendReply(token, {
         threadId: message.threadId,
@@ -503,7 +512,7 @@ app.post('/api/emails/:id/create-draft', async (req: Request, res: Response) => 
   if (!content) return res.status(400).json({ error: 'Draft content cannot be empty.' });
 
   let draftId = `draft-${Date.now()}`;
-  if (token) {
+  if (token && !isSimulatedMessage(message.id, message.threadId)) {
     try {
       const gDraft = await gmailClient.createDraft(token, {
         threadId: message.threadId,
@@ -548,7 +557,7 @@ app.post('/api/review-queue/:id/approve', async (req: Request, res: Response) =>
   const token = getBearerToken(req);
   const message = db.getMessage(item.messageId);
 
-  if (token && message) {
+  if (token && message && !isSimulatedMessage(item.messageId, item.threadId)) {
     try {
       await gmailClient.sendReply(token, {
         threadId: item.threadId,

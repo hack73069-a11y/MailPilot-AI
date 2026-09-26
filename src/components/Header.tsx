@@ -103,9 +103,6 @@ export const Header: React.FC<HeaderProps> = ({
                   <span>24/7 Daemon Active</span>
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 hidden sm:block">
-                Autonomous Gmail Auto-Reply & Inbox Automation
-              </p>
             </div>
           </div>
 

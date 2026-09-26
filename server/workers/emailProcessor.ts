@@ -18,12 +18,18 @@ export class EmailProcessor {
       return { message: existing, actionTaken: 'already_processed' };
     }
 
+    const isSimulated =
+      parsed.id.startsWith('sim-') ||
+      parsed.id.startsWith('msg-seed') ||
+      parsed.threadId.startsWith('sim-') ||
+      parsed.threadId.startsWith('thread-');
+
     // 2. Fetch or build thread context
     let thread = db.getThread(parsed.threadId);
     let threadMessages: EmailMessage[] = thread ? [...thread.messages] : [];
 
-    // If access token available and thread not fully loaded, attempt to fetch thread from Gmail
-    if (accessToken && threadMessages.length <= 1) {
+    // If access token available, not simulated, and thread not fully loaded, attempt to fetch thread from Gmail
+    if (accessToken && !isSimulated && threadMessages.length <= 1) {
       try {
         const fullThread = await gmailClient.getThread(accessToken, parsed.threadId);
         if (fullThread.messages && Array.isArray(fullThread.messages)) {
@@ -53,8 +59,8 @@ export class EmailProcessor {
             } as EmailMessage;
           });
         }
-      } catch (err) {
-        console.warn('Could not fetch remote thread history, using single message context:', err);
+      } catch (err: any) {
+        console.debug('Could not fetch remote thread history, using single message context:', err.message);
       }
     }
 
@@ -223,7 +229,7 @@ export class EmailProcessor {
         );
       }
     } else if (ruleResult.action === 'draft_only') {
-      if (accessToken) {
+      if (accessToken && !isSimulated) {
         try {
           const draftRes = await gmailClient.createDraft(accessToken, {
             threadId: parsed.threadId,

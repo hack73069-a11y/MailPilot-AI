@@ -677,19 +677,23 @@ class DatabaseService {
     return this.data.billing;
   }
 
-  // Active Token & Background Worker Persistence
+  private memoryToken: string | undefined = undefined;
+
+  // Active Token & Background Worker Persistence (stored in-memory only to avoid committing tokens to disk/git)
   getSavedToken(): string | undefined {
-    return this.data.activeToken;
+    return this.memoryToken;
   }
 
   setSavedToken(token: string, email?: string): void {
-    this.data.activeToken = token;
+    this.memoryToken = token;
+    this.data.activeToken = undefined; // Never persist bearer tokens to JSON file
     if (email) this.data.userEmail = email;
     this.saveData();
     this.logAudit('store_token', 'Saved active Gmail access token for continuous 24/7 background worker');
   }
 
   clearSavedToken(): void {
+    this.memoryToken = undefined;
     this.data.activeToken = undefined;
     this.saveData();
     this.logAudit('clear_token', 'Cleared Gmail access token');
