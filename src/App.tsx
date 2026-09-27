@@ -142,8 +142,8 @@ export default function App() {
     refreshAllData();
   }, [refreshAllData]);
 
-  // Autonomous background auto-reply loop with automatic reconnection:
-  // Automatically syncs Gmail every 30 seconds when authenticated to process and reply to new emails
+  // Autonomous background auto-reply loop:
+  // Automatically syncs Gmail every 4 seconds for near real-time fast response when authenticated
   useEffect(() => {
     if (!token) return;
 
@@ -157,24 +157,15 @@ export default function App() {
         }
       } catch (err: any) {
         if (err.isAuthError || err.status === 401 || (err.message && err.message.includes('authError'))) {
-          // Attempt automatic background reconnection
-          try {
-            const reconnected = await autoReconnectSession();
-            if (reconnected?.accessToken) {
-              setUser(reconnected.user);
-              setToken(reconnected.accessToken);
-              setSyncAuthError(null);
-              await api.syncGmail();
-              await refreshAllData();
-              return;
-            }
-          } catch {}
-          setSyncAuthError('Gmail session expired. Click Reconnect Gmail to renew credentials.');
+          // Token expired: clear dead session and pause background polling until user reconnects
+          clearExpiredSession();
+          setToken(null);
+          setSyncAuthError('Gmail session expired. Click "Reconnect Gmail" to renew credentials.');
         } else {
           console.debug('Background auto-sync cycle notice:', err.message);
         }
       }
-    }, 30000);
+    }, 4000);
 
     return () => clearInterval(intervalId);
   }, [token, refreshAllData]);
@@ -191,7 +182,7 @@ export default function App() {
     }
   };
 
-  // Sync Gmail with automatic reconnection
+  // Sync Gmail with graceful fallback
   const handleSyncGmail = async (overrideToken?: string) => {
     setIsSyncing(true);
     try {
@@ -201,24 +192,13 @@ export default function App() {
         setSyncAuthError(null);
         toast.success(`Daemon sync cycle completed • ${syncRes.syncedCount || 0} messages synced`);
       } else {
-        toast.info('Daemon sync cycle completed • Inbox up to date');
+        toast.info('Inbox up to date (preview mode). Click Connect Gmail to sync live.');
       }
       await refreshAllData();
     } catch (err: any) {
       if (err.isAuthError || err.status === 401 || (err.message && err.message.includes('authError'))) {
-        // Attempt automatic reconnection
-        try {
-          const reconnected = await autoReconnectSession();
-          if (reconnected?.accessToken) {
-            setUser(reconnected.user);
-            setToken(reconnected.accessToken);
-            setSyncAuthError(null);
-            await api.syncGmail();
-            await refreshAllData();
-            toast.success('Session refreshed & daemon sync cycle completed');
-            return;
-          }
-        } catch {}
+        clearExpiredSession();
+        setToken(null);
         setSyncAuthError('Gmail access token is expired or unauthorized. Click "Reconnect Gmail" to renew your session.');
         toast.warning('Gmail session update needed. Please reconnect your Google account.');
       } else {

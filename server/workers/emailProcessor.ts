@@ -28,11 +28,14 @@ export class EmailProcessor {
     let thread = db.getThread(parsed.threadId);
     let threadMessages: EmailMessage[] = thread ? [...thread.messages] : [];
 
-    // If access token available, not simulated, and thread not fully loaded, attempt to fetch thread from Gmail
+    // If access token available, not simulated, and thread not fully loaded, attempt fast thread fetch with timeout
     if (accessToken && !isSimulated && threadMessages.length <= 1) {
       try {
-        const fullThread = await gmailClient.getThread(accessToken, parsed.threadId);
-        if (fullThread.messages && Array.isArray(fullThread.messages)) {
+        const fullThread: any = await Promise.race([
+          gmailClient.getThread(accessToken, parsed.threadId),
+          new Promise((resolve) => setTimeout(() => resolve(null), 1500)),
+        ]);
+        if (fullThread && fullThread.messages && Array.isArray(fullThread.messages)) {
           threadMessages = fullThread.messages.map((m: any) => {
             const p = gmailClient.parseMessage(m);
             return {
@@ -60,7 +63,7 @@ export class EmailProcessor {
           });
         }
       } catch (err: any) {
-        console.debug('Could not fetch remote thread history, using single message context:', err.message);
+        console.debug('Fast path: using single message context for fast response:', err.message);
       }
     }
 
@@ -115,19 +118,19 @@ export class EmailProcessor {
       'info'
     );
 
-    // 5. Stage 1: AI Email Understanding & Classification
-    const analysis = await aiProvider.classifyEmail(
-      {
-        sender: parsed.sender,
-        subject: parsed.subject,
-        body: parsed.bodyPlain,
-        snippet: parsed.snippet,
-      },
-      threadContextStr
+    // 5. Unified High-Speed AI Pipeline: Analysis + Personalized Reply in a single sub-second pass
+    const preferences = db.getPreferences();
+    const rules = db.getRules();
+
+    const { analysis, reply } = await aiProvider.classifyAndDraft(
+      messageRecord,
+      threadMessages,
+      preferences
     );
-    analysis.messageId = messageRecord.id;
     messageRecord.analysis = analysis;
+    messageRecord.suggestedReply = reply;
     messageRecord.status = 'analyzed';
+    db.incrementRepliesGenerated();
 
     db.logActivity(
       'ai_analyzed',
@@ -138,8 +141,6 @@ export class EmailProcessor {
     );
 
     // 6. Stage 2: Rule Engine Evaluation
-    const preferences = db.getPreferences();
-    const rules = db.getRules();
     const ruleResult = ruleEngine.evaluate(messageRecord, analysis, rules, preferences);
 
     // If ignore, record and return
@@ -157,18 +158,10 @@ export class EmailProcessor {
       return { message: messageRecord, actionTaken: 'ignored' };
     }
 
-    // 7. Stage 3: AI Reply Generation & Validation
-    const reply = await aiProvider.generateReply(
-      messageRecord,
-      threadMessages,
-      preferences,
-      analysis,
-      ruleResult.matchedRule?.overrideTone
-        ? `Use ${ruleResult.matchedRule.overrideTone} tone.`
-        : undefined
-    );
-    messageRecord.suggestedReply = reply;
-    db.incrementRepliesGenerated();
+    // Apply tone override if rule matched
+    if (ruleResult.matchedRule?.overrideTone) {
+      reply.tone = ruleResult.matchedRule.overrideTone;
+    }
 
     db.logActivity(
       'reply_generated',

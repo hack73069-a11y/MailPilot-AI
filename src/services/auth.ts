@@ -35,29 +35,17 @@ const USER_KEY = 'mailpilot_gmail_user_meta';
 const ACCOUNTS_KEY = 'mailpilot_connected_google_accounts';
 
 let isSigningIn = false;
-let cachedAccessToken: string | null =
-  typeof window !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null;
+let cachedAccessToken: string | null = null;
 let cachedUser: any = null;
 
 if (typeof window !== 'undefined') {
   try {
+    // Clear any stale persistent tokens to prevent expired token loops
+    localStorage.removeItem(TOKEN_KEY);
     const storedUser = localStorage.getItem(USER_KEY);
     if (storedUser) {
       cachedUser = JSON.parse(storedUser);
     }
-  } catch {}
-}
-
-// If token exists on load, ensure backend worker is synced
-if (typeof window !== 'undefined' && cachedAccessToken) {
-  try {
-    const storedUser = localStorage.getItem(USER_KEY);
-    const parsedUser = storedUser ? JSON.parse(storedUser) : null;
-    fetch('/api/worker/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: cachedAccessToken, email: parsedUser?.email }),
-    }).catch(() => {});
   } catch {}
 }
 
@@ -92,21 +80,12 @@ export const initAuth = (
       notifySubscribers();
       if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
     } else if (user && !cachedAccessToken) {
-      // Check localStorage once more
-      const stored = typeof window !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null;
-      if (stored) {
-        cachedAccessToken = stored;
-        notifySubscribers();
-        if (onAuthSuccess) onAuthSuccess(user, stored);
-      } else if (!isSigningIn) {
-        notifySubscribers();
-        if (onAuthFailure) onAuthFailure();
-      }
+      notifySubscribers();
+      if (onAuthFailure) onAuthFailure();
     } else if (!user && !isSigningIn) {
-      if (!cachedAccessToken) {
-        notifySubscribers();
-        if (onAuthFailure) onAuthFailure();
-      }
+      cachedAccessToken = null;
+      notifySubscribers();
+      if (onAuthFailure) onAuthFailure();
     }
   });
 };
@@ -219,6 +198,7 @@ export const clearExpiredSession = () => {
   if (typeof window !== 'undefined') {
     localStorage.removeItem(TOKEN_KEY);
   }
+  fetch('/api/worker/token', { method: 'DELETE' }).catch(() => {});
   notifySubscribers();
 };
 

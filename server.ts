@@ -283,11 +283,18 @@ app.post('/api/gmail/sync', async (req: Request, res: Response) => {
       results: processedResults,
     });
   } catch (err: any) {
-    console.error('Gmail sync failed:', err.message || err);
     const isAuthError = err.isAuthError || err.status === 401 || (err.message && err.message.includes('authError'));
+    if (isAuthError) {
+      db.clearSavedToken();
+      console.info('[Gmail Sync] Access token inactive or expired. Awaiting user reconnection.');
+    } else {
+      console.warn('Gmail sync notice:', err.message || err);
+    }
     const statusCode = isAuthError ? 401 : (err.status || 500);
     res.status(statusCode).json({
-      error: err.message || 'Failed to sync emails from Gmail',
+      error: isAuthError
+        ? 'Gmail session expired or invalid credentials (authError). Please reconnect your Google account.'
+        : err.message || 'Failed to sync emails from Gmail',
       isAuthError: Boolean(isAuthError),
       code: isAuthError ? 'authError' : 'syncError',
     });

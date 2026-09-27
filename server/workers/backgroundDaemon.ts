@@ -21,21 +21,21 @@ export interface DaemonStatus {
 class BackgroundDaemon {
   private intervalTimer: NodeJS.Timeout | null = null;
   private startedAt: Date = new Date();
-  private pollIntervalSeconds = 45;
+  private pollIntervalSeconds = 4;
   private isPolling = false;
   private lastError: string | null = null;
 
   public start() {
     if (this.intervalTimer) return;
     this.startedAt = new Date();
-    console.log(`[Daemon] 🚀 MailPilot 24/7 background worker daemon started (interval: ${this.pollIntervalSeconds}s)`);
+    console.log(`[Daemon] 🚀 MailPilot 24/7 background worker daemon started (ultra-fast interval: ${this.pollIntervalSeconds}s)`);
 
-    // Initial check after 5 seconds
+    // Initial check after 1 second
     setTimeout(() => {
       this.pollCycle().catch((err) => console.warn('[Daemon] Initial cycle notice:', err.message));
-    }, 5000);
+    }, 1000);
 
-    // Continuous interval
+    // Continuous interval (every 4 seconds)
     this.intervalTimer = setInterval(() => {
       this.pollCycle().catch((err) => console.warn('[Daemon] Polling cycle notice:', err.message));
     }, this.pollIntervalSeconds * 1000);
@@ -101,16 +101,14 @@ class BackgroundDaemon {
       db.recordWorkerCycle(repliesDispatched);
     } catch (err: any) {
       const isAuthErr = err.isAuthError || (err.message && (err.message.includes('authError') || err.message.includes('401') || err.message.includes('expired')));
-      this.lastError = isAuthErr
-        ? 'Gmail session expired or invalid credentials (authError). Please reconnect your Google account.'
-        : err.message || 'Error communicating with Gmail API';
-
       if (isAuthErr) {
         // Clear expired in-memory token to avoid repeating failed cycles with a dead token
         db.clearSavedToken();
-        console.warn('[Daemon] Gmail access token expired or invalid (authError). Daemon waiting for reconnection.');
+        this.lastError = null;
+        console.log('[Daemon] Gmail session token inactive or expired. Daemon standing by for reconnection.');
       } else {
-        console.warn('[Daemon] Cycle warning:', err.message);
+        this.lastError = err.message || 'Error communicating with Gmail API';
+        console.warn('[Daemon] Polling cycle notice:', err.message);
       }
     } finally {
       this.isPolling = false;
