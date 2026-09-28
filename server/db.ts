@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import {
   UserPreferences,
   ReplyRule,
@@ -22,6 +23,8 @@ interface DatabaseSchema {
   billing: BillingUsage;
   activeToken?: string;
   userEmail?: string;
+  repliedMessageIds?: string[];
+  repliedThreadTimestamps?: Record<string, number>;
   workerStats?: {
     lastPollAt?: string;
     totalCycles: number;
@@ -29,7 +32,8 @@ interface DatabaseSchema {
   };
 }
 
-const DATA_DIR = path.resolve(process.cwd(), 'data');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const DATA_DIR = path.resolve(__dirname, '../data');
 const DB_FILE = path.join(DATA_DIR, 'mailpilot-db.json');
 
 const DEFAULT_PREFERENCES: UserPreferences = {
@@ -521,6 +525,12 @@ class DatabaseService {
 
   // Messages & Threads
   getMessages(): EmailMessage[] {
+    const hasRealMessages = this.data.messages.some(
+      (m) => !m.id.startsWith('msg-seed-') && !m.id.startsWith('sim-')
+    );
+    if (hasRealMessages) {
+      return this.data.messages.filter((m) => !m.id.startsWith('msg-seed-'));
+    }
     return this.data.messages;
   }
 
@@ -562,6 +572,12 @@ class DatabaseService {
 
   // Queue
   getQueue(): ApprovalQueueItem[] {
+    const hasRealMessages = this.data.messages.some(
+      (m) => !m.id.startsWith('msg-seed-') && !m.id.startsWith('sim-')
+    );
+    if (hasRealMessages) {
+      return this.data.queue.filter((q) => !q.messageId.startsWith('msg-seed-'));
+    }
     return this.data.queue;
   }
 
@@ -678,22 +694,36 @@ class DatabaseService {
   }
 
   private memoryToken: string | undefined = undefined;
+  private memoryUser: any = undefined;
+  private memoryTokenExpiresAt: number | undefined = undefined;
 
   // Active Token & Background Worker Persistence (stored in-memory only to avoid committing tokens to disk/git)
   getSavedToken(): string | undefined {
+    if (this.memoryTokenExpiresAt && Date.now() > this.memoryTokenExpiresAt) {
+      this.clearSavedToken();
+      return undefined;
+    }
     return this.memoryToken;
   }
 
-  setSavedToken(token: string, email?: string): void {
+  setSavedToken(token: string, email?: string, user?: any, expiresInMs = 3600000): void {
     this.memoryToken = token;
+    this.memoryTokenExpiresAt = Date.now() + expiresInMs;
+    if (user) this.memoryUser = user;
     this.data.activeToken = undefined; // Never persist bearer tokens to JSON file
     if (email) this.data.userEmail = email;
     this.saveData();
     this.logAudit('store_token', 'Saved active Gmail access token for continuous 24/7 background worker');
   }
 
+  getUserMeta(): any {
+    return this.memoryUser || (this.data.userEmail ? { email: this.data.userEmail } : undefined);
+  }
+
   clearSavedToken(): void {
     this.memoryToken = undefined;
+    this.memoryUser = undefined;
+    this.memoryTokenExpiresAt = undefined;
     this.data.activeToken = undefined;
     this.saveData();
     this.logAudit('clear_token', 'Cleared Gmail access token');
@@ -701,6 +731,36 @@ class DatabaseService {
 
   getUserEmail(): string | undefined {
     return this.data.userEmail;
+  }
+
+  // Persistent deduplication against double-replies
+  isMessageReplied(messageId: string): boolean {
+    if (!messageId) return false;
+    if (this.data.repliedMessageIds?.includes(messageId)) return true;
+    const msg = this.getMessage(messageId);
+    return Boolean(msg && (msg.status === 'replied' || msg.suggestedReply?.status === 'sent'));
+  }
+
+  isThreadRepliedRecently(threadId: string, cooldownMs = 60000): boolean {
+    if (!threadId) return false;
+    const lastTime = this.data.repliedThreadTimestamps?.[threadId];
+    if (lastTime && Date.now() - lastTime < cooldownMs) return true;
+    return false;
+  }
+
+  recordReplyDispatched(messageId: string, threadId: string): void {
+    if (!this.data.repliedMessageIds) this.data.repliedMessageIds = [];
+    if (!this.data.repliedThreadTimestamps) this.data.repliedThreadTimestamps = {};
+    if (messageId && !this.data.repliedMessageIds.includes(messageId)) {
+      this.data.repliedMessageIds.push(messageId);
+      if (this.data.repliedMessageIds.length > 1000) {
+        this.data.repliedMessageIds = this.data.repliedMessageIds.slice(-1000);
+      }
+    }
+    if (threadId) {
+      this.data.repliedThreadTimestamps[threadId] = Date.now();
+    }
+    this.saveData();
   }
 
   getWorkerStats() {

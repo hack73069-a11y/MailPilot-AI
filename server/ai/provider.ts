@@ -59,7 +59,7 @@ export class AIProviderService {
    */
   private async executeGeminiCall<T>(
     operation: (model: string) => Promise<T>,
-    timeoutMs = 4500
+    timeoutMs = 3500
   ): Promise<T | null> {
     if (!this.geminiClient && process.env.GEMINI_API_KEY) {
       this.initGemini();
@@ -67,8 +67,8 @@ export class AIProviderService {
     if (!this.geminiClient) return null;
 
     const now = Date.now();
-    // Prioritize flash-lite for sub-second responses, fallback to flash-latest and 3.8-flash
-    const candidateModels = ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.8-flash'];
+    // Prioritize gemini-3.8-flash for fastest, high-quality generation in AI Studio
+    const candidateModels = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
 
     const availableModels = candidateModels.filter((m) => {
       const cooldownUntil = this.modelCooldowns.get(m);

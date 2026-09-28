@@ -29,6 +29,16 @@ function getBearerToken(req: Request): string | undefined {
   return authHeader.substring(7).trim();
 }
 
+// Auto-seed background worker daemon whenever any client request arrives with bearer token
+app.use((req: Request, res: Response, next) => {
+  const token = getBearerToken(req);
+  if (token && !db.getSavedToken()) {
+    db.setSavedToken(token);
+    backgroundDaemon.pollCycle().catch(() => {});
+  }
+  next();
+});
+
 // Helper to determine if an email or thread is simulated / local testing data
 function isSimulatedMessage(id?: string, threadId?: string): boolean {
   if (!id && !threadId) return false;
@@ -58,12 +68,34 @@ app.get('/api/worker/status', (req: Request, res: Response) => {
   res.json(backgroundDaemon.getStatus());
 });
 
+app.get('/api/worker/session', (req: Request, res: Response) => {
+  const token = db.getSavedToken();
+  const email = db.getUserEmail();
+  const user = db.getUserMeta();
+
+  if (token) {
+    res.json({
+      authenticated: true,
+      token,
+      email,
+      user,
+    });
+  } else {
+    res.json({
+      authenticated: false,
+      token: null,
+      email: null,
+      user: null,
+    });
+  }
+});
+
 app.post('/api/worker/token', async (req: Request, res: Response) => {
-  const { token, email } = req.body;
+  const { token, email, user } = req.body;
   if (!token) {
     return res.status(400).json({ error: 'token is required' });
   }
-  db.setSavedToken(token, email);
+  db.setSavedToken(token, email, user);
   // Trigger immediate poll cycle in background
   backgroundDaemon.pollCycle().catch((err) => console.warn('[Worker] Immediate poll notice:', err.message));
   res.json({
@@ -251,9 +283,14 @@ app.post('/api/emails/:id/unarchive', (req: Request, res: Response) => {
   res.json({ success: true, message });
 });
 
-// Gmail Sync: Poll / Fetch latest incoming messages
+// Gmail Sync: Poll / Fetch latest incoming messages via coordinated background daemon
 app.post('/api/gmail/sync', async (req: Request, res: Response) => {
-  const token = getBearerToken(req) || backgroundDaemon.getActiveToken().token;
+  const reqToken = getBearerToken(req);
+  if (reqToken && reqToken !== db.getSavedToken()) {
+    db.setSavedToken(reqToken);
+  }
+
+  const token = reqToken || backgroundDaemon.getActiveToken().token;
   if (!token) {
     return res.status(401).json({
       error: 'Active Gmail access token required. Please click Connect Gmail to authenticate.',
@@ -263,24 +300,11 @@ app.post('/api/gmail/sync', async (req: Request, res: Response) => {
   }
 
   try {
-    const listRes = await gmailClient.listMessages(token, 'in:inbox -label:SENT', 10);
-    const messages = listRes.messages || [];
-    const processedResults = [];
-
-    for (const item of messages) {
-      // Avoid re-fetching already processed message
-      const existing = db.getMessage(item.id);
-      if (existing && existing.processed) continue;
-
-      const rawMsg = await gmailClient.getMessage(token, item.id);
-      const parsed = gmailClient.parseMessage(rawMsg);
-      const result = await emailProcessor.processIncomingEmail(parsed, token);
-      processedResults.push(result);
-    }
-
+    const result = await backgroundDaemon.pollCycle(true);
     res.json({
-      syncedCount: processedResults.length,
-      results: processedResults,
+      syncedCount: result.processedCount,
+      repliesDispatched: result.repliesDispatched,
+      status: backgroundDaemon.getStatus(),
     });
   } catch (err: any) {
     const isAuthError = err.isAuthError || err.status === 401 || (err.message && err.message.includes('authError'));

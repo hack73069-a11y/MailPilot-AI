@@ -21,21 +21,23 @@ export interface DaemonStatus {
 class BackgroundDaemon {
   private intervalTimer: NodeJS.Timeout | null = null;
   private startedAt: Date = new Date();
-  private pollIntervalSeconds = 4;
+  private pollIntervalSeconds = 8;
   private isPolling = false;
   private lastError: string | null = null;
+  private quotaCooldownUntil = 0;
+  private failedMessageCooldowns = new Map<string, number>();
 
   public start() {
     if (this.intervalTimer) return;
     this.startedAt = new Date();
-    console.log(`[Daemon] 🚀 MailPilot 24/7 background worker daemon started (ultra-fast interval: ${this.pollIntervalSeconds}s)`);
+    console.log(`[Daemon] 🚀 MailPilot 24/7 background worker daemon started (rate-safe interval: ${this.pollIntervalSeconds}s)`);
 
-    // Initial check after 1 second
+    // Initial check after 500ms
     setTimeout(() => {
       this.pollCycle().catch((err) => console.warn('[Daemon] Initial cycle notice:', err.message));
-    }, 1000);
+    }, 500);
 
-    // Continuous interval (every 4 seconds)
+    // Continuous interval
     this.intervalTimer = setInterval(() => {
       this.pollCycle().catch((err) => console.warn('[Daemon] Polling cycle notice:', err.message));
     }, this.pollIntervalSeconds * 1000);
@@ -59,9 +61,25 @@ class BackgroundDaemon {
     return { token: null, source: 'none' };
   }
 
-  public async pollCycle(): Promise<{ processedCount: number; repliesDispatched: number }> {
-    if (this.isPolling) {
+  public async pollCycle(force = false): Promise<{ processedCount: number; repliesDispatched: number }> {
+    // If in quota cooldown, honor backoff period unless user explicitly clicked manual sync
+    if (Date.now() < this.quotaCooldownUntil && !force) {
       return { processedCount: 0, repliesDispatched: 0 };
+    }
+
+    if (this.isPolling) {
+      if (!force) {
+        return { processedCount: 0, repliesDispatched: 0 };
+      }
+      // If forced (e.g. user clicked Sync Gmail), wait briefly for current cycle to conclude
+      let waited = 0;
+      while (this.isPolling && waited < 15) {
+        await new Promise((r) => setTimeout(r, 100));
+        waited++;
+      }
+      if (this.isPolling) {
+        return { processedCount: 0, repliesDispatched: 0 };
+      }
     }
 
     const { token, source } = this.getActiveToken();
@@ -75,18 +93,47 @@ class BackgroundDaemon {
     let repliesDispatched = 0;
 
     try {
-      // Poll latest inbox emails excluding user's own sent emails
-      const listRes = await gmailClient.listMessages(token, 'in:inbox -label:SENT', 8);
+      // Fetch newest messages from inbox (1 single efficient list query = 5 quota units)
+      const listRes = await gmailClient.listMessages(token, 'in:inbox', 15);
       const messages = listRes.messages || [];
 
-      for (const item of messages) {
-        // Skip if already processed in local DB
+      // Filter messages that need processing
+      const now = Date.now();
+      const unhandled = messages.filter((item) => {
+        if (!item?.id) return false;
+        if (emailProcessor.isLocked(item.id)) return false;
+
+        const failedUntil = this.failedMessageCooldowns.get(item.id);
+        if (failedUntil && now < failedUntil) return false;
+
         const existing = db.getMessage(item.id);
-        if (existing && existing.processed) continue;
+        if (
+          existing &&
+          existing.processed &&
+          (existing.status === 'replied' ||
+            existing.status === 'ignored' ||
+            existing.status === 'in_review' ||
+            existing.status === 'analyzed')
+        ) {
+          return false;
+        }
+        return true;
+      });
+
+      // Process at most 4 new messages per cycle with 100ms throttle between them
+      // This strictly prevents spiking per-second / per-minute quota limits
+      const batch = unhandled.slice(0, 4);
+
+      for (const item of batch) {
+        emailProcessor.lock(item.id);
 
         try {
+          // Add brief 100ms throttle between API calls
+          await new Promise((r) => setTimeout(r, 100));
+
           const rawMsg = await gmailClient.getMessage(token, item.id);
           const parsed = gmailClient.parseMessage(rawMsg);
+
           const result = await emailProcessor.processIncomingEmail(parsed, token);
           processedCount++;
 
@@ -94,21 +141,56 @@ class BackgroundDaemon {
             repliesDispatched++;
           }
         } catch (msgErr: any) {
-          console.warn(`[Daemon] Error processing message ${item.id}:`, msgErr.message);
+          const isQuota =
+            msgErr.isQuotaError ||
+            (msgErr.message &&
+              (msgErr.message.includes('quota') ||
+                msgErr.message.includes('Quota') ||
+                msgErr.message.includes('Forbidden') ||
+                msgErr.status === 403));
+
+          if (isQuota) {
+            // Apply 45-second cooldown to let Google's rate-limiting bucket recover
+            this.quotaCooldownUntil = Date.now() + 45000;
+            this.failedMessageCooldowns.set(item.id, Date.now() + 60000);
+            console.warn(`[Daemon] Gmail API quota metric hit for message ${item.id}. Entering 45s cooldown.`);
+            break; // Stop further requests this cycle to protect quota
+          } else {
+            this.failedMessageCooldowns.set(item.id, Date.now() + 30000);
+            console.warn(`[Daemon] Notice processing message ${item.id}:`, msgErr.message);
+          }
+        } finally {
+          emailProcessor.unlock(item.id);
         }
       }
 
       db.recordWorkerCycle(repliesDispatched);
     } catch (err: any) {
-      const isAuthErr = err.isAuthError || (err.message && (err.message.includes('authError') || err.message.includes('401') || err.message.includes('expired')));
-      if (isAuthErr) {
-        // Clear expired in-memory token to avoid repeating failed cycles with a dead token
-        db.clearSavedToken();
-        this.lastError = null;
-        console.log('[Daemon] Gmail session token inactive or expired. Daemon standing by for reconnection.');
+      const isQuota =
+        err.isQuotaError ||
+        (err.message &&
+          (err.message.includes('quota') ||
+            err.message.includes('Quota') ||
+            err.message.includes('Forbidden') ||
+            err.status === 403));
+
+      if (isQuota) {
+        this.quotaCooldownUntil = Date.now() + 45000;
+        this.lastError = 'Gmail API rate limit reached. Pausing for 45 seconds to reset.';
+        console.warn('[Daemon] Gmail quota exceeded notice. Backing off for 45s.');
       } else {
-        this.lastError = err.message || 'Error communicating with Gmail API';
-        console.warn('[Daemon] Polling cycle notice:', err.message);
+        const isAuthErr =
+          err.isAuthError ||
+          (err.message &&
+            (err.message.includes('authError') || err.message.includes('401') || err.message.includes('expired')));
+        if (isAuthErr) {
+          db.clearSavedToken();
+          this.lastError = null;
+          console.log('[Daemon] Gmail session token inactive or expired. Daemon standing by for reconnection.');
+        } else {
+          this.lastError = err.message || 'Error communicating with Gmail API';
+          console.warn('[Daemon] Polling cycle notice:', err.message);
+        }
       }
     } finally {
       this.isPolling = false;

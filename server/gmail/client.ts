@@ -80,13 +80,24 @@ export class GmailClient {
     });
 
     if (!res.ok) {
-      const errText = await res.text();
+      const errText = await res.text().catch(() => '');
       let isAuthError = res.status === 401;
+      let isQuotaError = res.status === 403;
       let errorDetail = errText;
       try {
         const parsed = JSON.parse(errText);
-        if (parsed.error?.errors?.[0]?.reason === 'authError' || parsed.error?.code === 401) {
+        const reason = parsed.error?.errors?.[0]?.reason || '';
+        if (reason === 'authError' || parsed.error?.code === 401) {
           isAuthError = true;
+        }
+        if (
+          res.status === 429 ||
+          reason === 'rateLimitExceeded' ||
+          reason === 'userRateLimitExceeded' ||
+          reason === 'quotaExceeded' ||
+          errText.includes('Quota exceeded')
+        ) {
+          isQuotaError = true;
         }
         if (parsed.error?.message) {
           errorDetail = parsed.error.message;
@@ -94,12 +105,15 @@ export class GmailClient {
       } catch {}
 
       const err: any = new Error(
-        isAuthError
+        isQuotaError
+          ? `Gmail API quota limit reached: ${errorDetail}`
+          : isAuthError
           ? `Gmail session expired or invalid credentials (authError). Please reconnect your Google account.`
           : `Failed to list Gmail messages (${res.status}): ${errorDetail}`
       );
       err.status = res.status;
       err.isAuthError = isAuthError;
+      err.isQuotaError = isQuotaError;
       throw err;
     }
 
@@ -117,7 +131,41 @@ export class GmailClient {
     });
 
     if (!res.ok) {
-      throw new Error(`Failed to fetch message ${messageId}: ${res.statusText}`);
+      const errText = await res.text().catch(() => '');
+      let isAuthError = res.status === 401;
+      let isQuotaError = res.status === 403;
+      let errorDetail = errText;
+      try {
+        const parsed = JSON.parse(errText);
+        const reason = parsed.error?.errors?.[0]?.reason || '';
+        if (reason === 'authError' || parsed.error?.code === 401) {
+          isAuthError = true;
+        }
+        if (
+          res.status === 429 ||
+          reason === 'rateLimitExceeded' ||
+          reason === 'userRateLimitExceeded' ||
+          reason === 'quotaExceeded' ||
+          errText.includes('Quota exceeded')
+        ) {
+          isQuotaError = true;
+        }
+        if (parsed.error?.message) {
+          errorDetail = parsed.error.message;
+        }
+      } catch {}
+
+      const err: any = new Error(
+        isQuotaError
+          ? `Gmail API quota limit reached: ${errorDetail}`
+          : isAuthError
+          ? `Gmail session expired or invalid credentials (authError).`
+          : `Failed to fetch message ${messageId} (${res.status}): ${errorDetail || res.statusText}`
+      );
+      err.status = res.status;
+      err.isAuthError = isAuthError;
+      err.isQuotaError = isQuotaError;
+      throw err;
     }
 
     return res.json();
@@ -134,7 +182,41 @@ export class GmailClient {
     });
 
     if (!res.ok) {
-      throw new Error(`Failed to fetch thread ${threadId}: ${res.statusText}`);
+      const errText = await res.text().catch(() => '');
+      let isAuthError = res.status === 401;
+      let isQuotaError = res.status === 403;
+      let errorDetail = errText;
+      try {
+        const parsed = JSON.parse(errText);
+        const reason = parsed.error?.errors?.[0]?.reason || '';
+        if (reason === 'authError' || parsed.error?.code === 401) {
+          isAuthError = true;
+        }
+        if (
+          res.status === 429 ||
+          reason === 'rateLimitExceeded' ||
+          reason === 'userRateLimitExceeded' ||
+          reason === 'quotaExceeded' ||
+          errText.includes('Quota exceeded')
+        ) {
+          isQuotaError = true;
+        }
+        if (parsed.error?.message) {
+          errorDetail = parsed.error.message;
+        }
+      } catch {}
+
+      const err: any = new Error(
+        isQuotaError
+          ? `Gmail API quota limit reached: ${errorDetail}`
+          : isAuthError
+          ? `Gmail session expired or invalid credentials (authError).`
+          : `Failed to fetch thread ${threadId} (${res.status}): ${errorDetail || res.statusText}`
+      );
+      err.status = res.status;
+      err.isAuthError = isAuthError;
+      err.isQuotaError = isQuotaError;
+      throw err;
     }
 
     return res.json();
@@ -214,6 +296,34 @@ export class GmailClient {
     }
 
     return res.json();
+  }
+
+  /**
+   * Modify Gmail labels (e.g. remove UNREAD or INBOX)
+   */
+  async modifyLabels(
+    accessToken: string,
+    messageId: string,
+    removeLabelIds: string[] = [],
+    addLabelIds: string[] = []
+  ): Promise<any> {
+    try {
+      const res = await fetch(`${this.baseUrl}/messages/${messageId}/modify`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          removeLabelIds,
+          addLabelIds,
+        }),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
   }
 
   /**

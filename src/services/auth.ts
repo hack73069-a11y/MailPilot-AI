@@ -30,7 +30,6 @@ export interface ConnectedGoogleAccount {
   isWorkspace: boolean;
 }
 
-const TOKEN_KEY = 'mailpilot_gmail_access_token';
 const USER_KEY = 'mailpilot_gmail_user_meta';
 const ACCOUNTS_KEY = 'mailpilot_connected_google_accounts';
 
@@ -40,8 +39,6 @@ let cachedUser: any = null;
 
 if (typeof window !== 'undefined') {
   try {
-    // Clear any stale persistent tokens to prevent expired token loops
-    localStorage.removeItem(TOKEN_KEY);
     const storedUser = localStorage.getItem(USER_KEY);
     if (storedUser) {
       cachedUser = JSON.parse(storedUser);
@@ -70,22 +67,94 @@ function notifySubscribers() {
   });
 }
 
+// Restore active session token from server in-memory storage (prevents logging out after browser refresh)
+export const restoreServerSession = async (): Promise<{ user: any; accessToken: string } | null> => {
+  try {
+    const res = await fetch('/api/worker/session');
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.authenticated && data.token) {
+      cachedAccessToken = data.token;
+      if (data.user) {
+        cachedUser = data.user;
+      } else if (data.email) {
+        cachedUser = { email: data.email, displayName: data.email.split('@')[0] };
+      }
+      notifySubscribers();
+      return { user: cachedUser, accessToken: data.token };
+    }
+  } catch (e) {
+    console.debug('Server session restore notice:', e);
+  }
+  return null;
+};
+
 export const initAuth = (
   onAuthSuccess?: (user: User, token: string) => void,
   onAuthFailure?: () => void
 ) => {
+  // Proactively check server session on startup so UI restores immediately without waiting for Firebase popup
+  restoreServerSession().then((session) => {
+    if (session && onAuthSuccess) {
+      onAuthSuccess(session.user, session.accessToken);
+    }
+  });
+
   return onAuthStateChanged(auth, async (user: User | null) => {
-    cachedUser = user;
-    if (user && cachedAccessToken) {
-      notifySubscribers();
-      if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
-    } else if (user && !cachedAccessToken) {
-      notifySubscribers();
-      if (onAuthFailure) onAuthFailure();
-    } else if (!user && !isSigningIn) {
-      cachedAccessToken = null;
-      notifySubscribers();
-      if (onAuthFailure) onAuthFailure();
+    if (user) {
+      cachedUser = user;
+      // If token is missing after page refresh, restore it from server memory or connected accounts
+      if (!cachedAccessToken) {
+        const session = await restoreServerSession();
+        if (session) {
+          notifySubscribers();
+          if (onAuthSuccess) onAuthSuccess(user, session.accessToken);
+          return;
+        }
+        const accounts = getConnectedAccounts();
+        const active = accounts.find((a) => a.email.toLowerCase() === user.email?.toLowerCase()) || accounts[0];
+        if (active && active.accessToken) {
+          cachedAccessToken = active.accessToken;
+          fetch('/api/worker/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: active.accessToken, email: active.email, user }),
+          }).catch(() => {});
+          notifySubscribers();
+          if (onAuthSuccess) onAuthSuccess(user, active.accessToken);
+          return;
+        }
+      }
+
+      if (cachedAccessToken) {
+        notifySubscribers();
+        if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
+      } else {
+        notifySubscribers();
+        if (onAuthFailure) onAuthFailure();
+      }
+    } else if (!isSigningIn) {
+      const session = await restoreServerSession();
+      if (session) {
+        if (onAuthSuccess) onAuthSuccess(session.user, session.accessToken);
+      } else {
+        const accounts = getConnectedAccounts();
+        if (accounts.length > 0 && accounts[0].accessToken) {
+          cachedAccessToken = accounts[0].accessToken;
+          cachedUser = { email: accounts[0].email, displayName: accounts[0].displayName };
+          fetch('/api/worker/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: cachedAccessToken, email: accounts[0].email, user: cachedUser }),
+          }).catch(() => {});
+          notifySubscribers();
+          if (onAuthSuccess) onAuthSuccess(cachedUser, cachedAccessToken);
+        } else {
+          cachedAccessToken = null;
+          notifySubscribers();
+          if (onAuthFailure) onAuthFailure();
+        }
+      }
     }
   });
 };
@@ -140,7 +209,6 @@ export const switchConnectedAccount = async (targetEmail: string): Promise<Conne
   cachedUser = userObj;
 
   if (typeof window !== 'undefined') {
-    localStorage.setItem(TOKEN_KEY, target.accessToken);
     localStorage.setItem(USER_KEY, JSON.stringify(userObj));
     target.lastActive = Date.now();
     const updatedAccounts = accounts.map((a) =>
@@ -154,7 +222,7 @@ export const switchConnectedAccount = async (targetEmail: string): Promise<Conne
     await fetch('/api/worker/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: target.accessToken, email: target.email }),
+      body: JSON.stringify({ token: target.accessToken, email: target.email, user: userObj }),
     });
   } catch (e) {
     console.warn('Worker account switch sync notice:', e);
@@ -195,9 +263,6 @@ export const autoReconnectSession = async (hintEmail?: string): Promise<{ user: 
 
 export const clearExpiredSession = () => {
   cachedAccessToken = null;
-  if (typeof window !== 'undefined') {
-    localStorage.removeItem(TOKEN_KEY);
-  }
   fetch('/api/worker/token', { method: 'DELETE' }).catch(() => {});
   notifySubscribers();
 };
@@ -233,6 +298,13 @@ export const googleSignIn = async (hintEmail?: string): Promise<{ user: User; ac
       email.toLowerCase().endsWith('@googlemail.com')
     );
 
+    const userProfile = {
+      uid: result.user.uid,
+      email: result.user.email,
+      displayName: result.user.displayName,
+      photoURL: result.user.photoURL,
+    };
+
     const newAccount: ConnectedGoogleAccount = {
       uid: result.user.uid,
       email: email,
@@ -244,19 +316,10 @@ export const googleSignIn = async (hintEmail?: string): Promise<{ user: User; ac
       isWorkspace: isWs,
     };
 
-    // Persist to localStorage
+    // Persist user profile (never raw access token)
     if (typeof window !== 'undefined') {
-      localStorage.setItem(TOKEN_KEY, credential.accessToken);
       if (result.user?.email) {
-        localStorage.setItem(
-          USER_KEY,
-          JSON.stringify({
-            uid: result.user.uid,
-            email: result.user.email,
-            displayName: result.user.displayName,
-            photoURL: result.user.photoURL,
-          })
-        );
+        localStorage.setItem(USER_KEY, JSON.stringify(userProfile));
       }
 
       // Add or update in connected accounts registry
@@ -268,12 +331,16 @@ export const googleSignIn = async (hintEmail?: string): Promise<{ user: User; ac
       localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(updatedAccounts));
     }
 
-    // Inform server background worker daemon to run 24/7 autonomously
+    // Inform server background worker daemon to run 24/7 autonomously with session persistence
     try {
       await fetch('/api/worker/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: credential.accessToken, email: result.user?.email }),
+        body: JSON.stringify({
+          token: credential.accessToken,
+          email: result.user?.email,
+          user: userProfile,
+        }),
       });
     } catch (e) {
       console.warn('Worker token sync notice:', e);
@@ -305,8 +372,24 @@ export const googleSignIn = async (hintEmail?: string): Promise<{ user: User; ac
 };
 
 export const getAccessToken = async (): Promise<string | null> => {
-  if (!cachedAccessToken && typeof window !== 'undefined') {
-    cachedAccessToken = localStorage.getItem(TOKEN_KEY);
+  if (!cachedAccessToken) {
+    const session = await restoreServerSession();
+    if (session) cachedAccessToken = session.accessToken;
+    if (!cachedAccessToken) {
+      const accounts = getConnectedAccounts();
+      if (accounts.length > 0 && accounts[0].accessToken) {
+        cachedAccessToken = accounts[0].accessToken;
+        fetch('/api/worker/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token: cachedAccessToken,
+            email: accounts[0].email,
+            user: cachedUser || accounts[0],
+          }),
+        }).catch(() => {});
+      }
+    }
   }
   return cachedAccessToken;
 };
@@ -316,9 +399,6 @@ export const getCurrentUser = (): User | null => {
 };
 
 export const hasValidToken = (): boolean => {
-  if (!cachedAccessToken && typeof window !== 'undefined') {
-    cachedAccessToken = localStorage.getItem(TOKEN_KEY);
-  }
   return Boolean(cachedAccessToken);
 };
 
@@ -327,7 +407,6 @@ export const logout = async () => {
   cachedAccessToken = null;
   cachedUser = null;
   if (typeof window !== 'undefined') {
-    localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
     localStorage.removeItem(ACCOUNTS_KEY);
   }

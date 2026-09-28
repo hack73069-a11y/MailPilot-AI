@@ -142,28 +142,16 @@ export default function App() {
     refreshAllData();
   }, [refreshAllData]);
 
-  // Autonomous background auto-reply loop:
-  // Automatically syncs Gmail every 4 seconds for near real-time fast response when authenticated
+  // Autonomous background data refresh loop:
+  // Daemon runs 24/7 on the server; client refreshes state every 4 seconds without duplicate sync runs
   useEffect(() => {
     if (!token) return;
 
     const intervalId = setInterval(async () => {
       try {
-        const activeToken = token || (await getAccessToken());
-        if (activeToken) {
-          await api.syncGmail();
-          await refreshAllData();
-          setSyncAuthError(null);
-        }
+        await refreshAllData();
       } catch (err: any) {
-        if (err.isAuthError || err.status === 401 || (err.message && err.message.includes('authError'))) {
-          // Token expired: clear dead session and pause background polling until user reconnects
-          clearExpiredSession();
-          setToken(null);
-          setSyncAuthError('Gmail session expired. Click "Reconnect Gmail" to renew credentials.');
-        } else {
-          console.debug('Background auto-sync cycle notice:', err.message);
-        }
+        console.debug('Background data refresh notice:', err.message);
       }
     }, 4000);
 
